@@ -187,6 +187,7 @@ func queryMiners(c *Context, req RequestBody) (ResponseInfo, error) {
 		for reader.Scan() {
 			token := reader.Text()
 			sendEvent(c, token)
+			c.Info.Println(token)
 			if token == "data: [DONE]" {
 				finished = true
 				break
