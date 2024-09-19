@@ -21,15 +21,9 @@ type Delta struct {
 	Content string `json:"content"`
 }
 
-type RequestBodyMessages struct {
-	Role    string `json:"role"`
-	Content string `json:"content"`
-	Name    string `json:"name"`
-}
-
 type RequestBody struct {
 	Model     string                `json:"model"`
-	Messages  []RequestBodyMessages `json:"messages"`
+	Messages  []ChatMessage `json:"messages"`
 	ApiKey    string                `json:"api_key"`
 	MaxTokens int                   `json:"max_tokens"`
 	PubId     string                `json:"pub_id"`
@@ -51,28 +45,18 @@ type Epistula struct {
 }
 
 type InferenceBody struct {
-	Messages       []RequestBodyMessages `json:"messages"`
-	SamplingParams SamplingParams        `json:"sampling_params"`
+	Messages    []ChatMessage `json:"messages"`
+	Temperature float32       `json:"temperature"`
+	Model       string        `json:"model"`
+	MaxTokens   int           `json:"max_tokens"`
+	Stream      bool          `json:"stream"`
+	Logprobs    bool          `json:"logprobs"`
 }
 
-type SamplingParams struct {
-	BestOf              int      `json:"best_of"`
-	DecoderInputDetails bool     `json:"decoder_input_details"`
-	Details             bool     `json:"details"`
-	DoSample            bool     `json:"do_sample"`
-	MaxNewTokens        int      `json:"max_new_tokens"`
-	RepetitionPenalty   float32  `json:"repetition_penalty"`
-	ReturnFullText      bool     `json:"return_full_text"`
-	Stop                []string `json:"stop"`
-	Temperature         float32  `json:"temperature"`
-	TopK                int      `json:"top_k"`
-	TopNTokens          int      `json:"top_n_tokens"`
-	TopP                float32  `json:"top_p"`
-	TypicalP            float32  `json:"typical_p"`
-	Watermark           bool     `json:"watermark"`
-	Seed                int      `json:"seed"`
-	Truncate            *string  `json:"truncate"`
-	Stream              bool     `json:"stream"`
+type ChatMessage struct {
+	Role    string `json:"role"`
+	Content string `json:"content"`
+	Name    string `json:"name,omitempty"`
 }
 
 type Event struct {

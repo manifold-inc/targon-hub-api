@@ -15,7 +15,6 @@ import (
 	"math/rand"
 	"net/http"
 	"os"
-	"strings"
 	"time"
 
 	"github.com/ChainSafe/go-schnorrkel"
@@ -120,26 +119,12 @@ func queryMiners(c *Context, req RequestBody) (ResponseInfo, error) {
 	// parent function via go routines
 	for index, miner := range miners {
 		body := InferenceBody{
-			Messages: req.Messages,
-			SamplingParams: SamplingParams{
-				Seed:                5688697,
-				Truncate:            nil,
-				BestOf:              1,
-				DecoderInputDetails: true,
-				Details:             false,
-				DoSample:            true,
-				MaxNewTokens:        4048,
-				RepetitionPenalty:   1.0,
-				ReturnFullText:      false,
-				Stop:                []string{""},
-				Temperature:         .01,
-				TopK:                10,
-				TopNTokens:          5,
-				TopP:                .98,
-				TypicalP:            .98,
-				Watermark:           false,
-				Stream:              true,
-			},
+			Messages:    req.Messages,
+			MaxTokens:   4048,
+			Temperature: .3,
+			Stream:      true,
+			Logprobs:    true,
+			Model:       "NousResearch/Meta-Llama-3.1-8B-Instruct",
 		}
 		endpoint := "http://" + miner.Ip + ":" + fmt.Sprint(miner.Port) + "/v1/chat/completions"
 		out, err := json.Marshal(body)
@@ -197,35 +182,12 @@ func queryMiners(c *Context, req RequestBody) (ResponseInfo, error) {
 		}
 
 		c.Info.Printf("Attempt: %d Miner: %s %s\n", index, miner.Hotkey, miner.Coldkey)
-		reader := bufio.NewReader(res.Body)
+		reader := bufio.NewScanner(res.Body)
 		finished := false
-		ans := ""
-		for {
-			token, err := reader.ReadString(' ')
-			if strings.Contains(token, "<s>") || strings.Contains(token, "</s>") || strings.Contains(token, "<im_end>") {
-				finished = true
-				token = strings.ReplaceAll(token, "<s>", "")
-				token = strings.ReplaceAll(token, "</s>", "")
-				token = strings.ReplaceAll(token, "<im_end>", "")
-			}
-			ans += token
-			if err != nil && err != io.EOF {
-				ans = ""
-				c.Err.Println(err.Error())
-				break
-			}
-
-			data := Response{
-				Id:      uuid.New().String(),
-				Object:  "chat.completion.chunk",
-				Created: time.Now().String(),
-				Model:   "NousResearch/Meta-Llama-3.1-8B-Instruct",
-				Choices: []Choice{{Delta: Delta{Content: token}}},
-			}
-			eventData, _ := json.Marshal(data)
-			sendEvent(c, string(eventData))
-			if err == io.EOF {
-				sendEvent(c, "[DONE]")
+		for reader.Scan() {
+			token := reader.Text()
+			sendEvent(c, token)
+			if token == "data: [DONE]" {
 				finished = true
 				break
 			}
