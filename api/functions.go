@@ -15,6 +15,7 @@ import (
 	"math/rand"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/ChainSafe/go-schnorrkel"
@@ -186,12 +187,24 @@ func queryMiners(c *Context, req RequestBody) (ResponseInfo, error) {
 		finished := false
 		for reader.Scan() {
 			token := reader.Text()
-			sendEvent(c, token)
-			c.Info.Println(token)
 			if token == "data: [DONE]" {
+				sendEvent(c, token)
 				finished = true
 				break
 			}
+			token_bloc, found := strings.CutPrefix(token, "data: ")
+			if !found {
+				break
+			}
+			var data InferenceBody
+			err := json.Unmarshal([]byte(token_bloc), &data)
+			if err != nil {
+				break
+			}
+			if data.Messages[0].Content == nil {
+				continue
+			}
+			sendEvent(c, token)
 		}
 		res.Body.Close()
 		if finished == false {
