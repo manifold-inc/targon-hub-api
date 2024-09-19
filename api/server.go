@@ -2,10 +2,9 @@ package main
 
 import (
 	"database/sql"
-	"encoding/json"
 	"fmt"
+	"io"
 	"log"
-	"net/http"
 	"os"
 	"strconv"
 
@@ -89,28 +88,37 @@ func main() {
 	e.POST("/api/chat/completions", func(c echo.Context) error {
 		cc := c.(*Context)
 		cc.Request().Header.Add("Content-Type", "application/json")
-		var req RequestBody
-		err = json.NewDecoder(c.Request().Body).Decode(&req)
-		if err != nil {
-			log.Println("Error decoding json")
-			return echo.NewHTTPError(http.StatusInternalServerError, err.Error())
-		}
-		if req.ApiKey != HUB_SECRET_TOKEN {
-			log.Println("Unauthorized request")
-			return echo.NewHTTPError(http.StatusUnauthorized, err.Error())
-		}
+		bearer := cc.Request().Header.Get("Authorization")
+		cc.Info.Println(bearer)
 		c.Response().Header().Set("Content-Type", "text/event-stream; charset=utf-8")
 		c.Response().Header().Set("Cache-Control", "no-cache")
 		c.Response().Header().Set("Connection", "keep-alive")
 		c.Response().Header().Set("X-Accel-Buffering", "no")
-
 		cc.Info.Printf("/api/chat/completions\n")
-		info, ok := queryMiners(cc, req)
+		var (
+			credits int
+			userid  string
+		)
+		err := db.QueryRow("SELECT user.credits, user.id FROM user INNER JOIN api_key ON user.id = api_key.user_id WHERE api_key.id = $1", bearer).Scan(&credits, &userid)
+		if err == sql.ErrNoRows{
+			return c.String(401, "Unauthorized")
+		}
+		if err != nil {
+			cc.Err.Println(err)
+			return c.String(500, "")
+		}
+		if credits < 0{
+			return c.String(403, "Out of credits")
+		}
+		body, _ := io.ReadAll(cc.Request().Body)
+		if err != nil {
+			cc.Err.Println(err)
+			return c.String(500, "")
+		}
+
+		_, ok := queryMiners(cc, body)
 		if ok != nil {
 			return c.String(500, ok.Error())
-		}
-		if db != nil {
-			go updatOrganicRequest(db, info, req.PubId)
 		}
 		return c.String(200, "")
 	})

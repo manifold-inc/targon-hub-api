@@ -92,7 +92,7 @@ func getTopMiners(c *Context) []Miner {
 	return miners
 }
 
-func queryMiners(c *Context, req RequestBody) (ResponseInfo, error) {
+func queryMiners(c *Context, req []byte) (ResponseInfo, error) {
 	// Query miners with llm request
 
 	// First we get our miners
@@ -112,25 +112,12 @@ func queryMiners(c *Context, req RequestBody) (ResponseInfo, error) {
 	// query each miner at the same time with the variable context of the
 	// parent function via go routines
 	for index, miner := range miners {
-		body := InferenceBody{
-			Messages:    req.Messages,
-			MaxTokens:   4048,
-			Temperature: .3,
-			Stream:      true,
-			Logprobs:    true,
-			Model:       "NousResearch/Meta-Llama-3.1-8B-Instruct",
-		}
 		endpoint := "http://" + miner.Ip + ":" + fmt.Sprint(miner.Port) + "/v1/chat/completions"
-		out, err := json.Marshal(body)
-		if err != nil {
-			c.Warn.Printf("Failed to parse json %s", err.Error())
-			continue
-		}
 		timestamp := time.Now().UnixMilli()
 		id := uuid.New().String()
 		timestampInterval := int64(math.Ceil(float64(timestamp) / 1e4))
 
-		bodyHash := sha256Hash(out)
+		bodyHash := sha256Hash(req)
 		message := fmt.Sprintf("%s.%s.%d.%s", bodyHash, id, timestamp, miner.Hotkey)
 		requestSignature := signMessage([]byte(message), PUBLIC_KEY, PRIVATE_KEY)
 
@@ -148,7 +135,7 @@ func queryMiners(c *Context, req RequestBody) (ResponseInfo, error) {
 			"Connection":                  "keep-alive",
 		}
 
-		r, err := http.NewRequest("POST", endpoint, bytes.NewBuffer(out))
+		r, err := http.NewRequest("POST", endpoint, bytes.NewBuffer(req))
 		if err != nil {
 			c.Warn.Printf("Failed miner request: %s\n", err.Error())
 			continue
@@ -197,8 +184,8 @@ func queryMiners(c *Context, req RequestBody) (ResponseInfo, error) {
 	return ResponseInfo{}, errors.New("Ran out of miners to query")
 }
 
-func updatOrganicRequest(db *sql.DB, res ResponseInfo, pub_id string) {
-	_, err := db.Exec("UPDATE organic_request SET uid=$1, hotkey=$2, coldkey=$3, miner_address=$4, attempt=$5 WHERE pub_id=$6", res.Miner.Uid, res.Miner.Hotkey, res.Miner.Coldkey, fmt.Sprintf("http://%s:%d", res.Miner.Ip, res.Miner.Port), res.Attempt, pub_id)
+func updatOrganicRequest(db *sql.DB, res ResponseInfo) {
+	_, err := db.Exec("UPDATE organic_request SET uid=$1, hotkey=$2, coldkey=$3, miner_address=$4, attempt=$5 WHERE pub_id=$6", res.Miner.Uid, res.Miner.Hotkey, res.Miner.Coldkey, fmt.Sprintf("http://%s:%d", res.Miner.Ip, res.Miner.Port), res.Attempt)
 	if err != nil {
 		log.Println("Failed to update")
 		log.Println(err)
