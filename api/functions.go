@@ -72,7 +72,7 @@ func sha256Hash(str []byte) string {
 }
 
 func sendEvent(c *Context, data string) {
-	// Send SSE event to response
+	c.Info.Println(data)
 	fmt.Fprintf(c.Response(), "data: %s\n\n", data)
 	c.Response().Flush()
 }
@@ -192,7 +192,7 @@ func queryMiners(c *Context, req RequestBody) (ResponseInfo, error) {
 				continue
 			}
 			if token_bloc == "[DONE]" {
-				sendEvent(c, token)
+				sendEvent(c, token_bloc)
 				finished = true
 				break
 			}
