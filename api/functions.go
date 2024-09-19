@@ -205,6 +205,8 @@ func queryMiners(c *Context, req RequestBody) (ResponseInfo, error) {
 				continue
 			}
 			c.Info.Println(data.Choices[0].Delta.Content)
+			c.Info.Println(token)
+			c.Info.Println(token_bloc)
 			sendEvent(c, token)
 		}
 		res.Body.Close()
