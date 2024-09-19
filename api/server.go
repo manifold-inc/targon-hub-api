@@ -99,7 +99,7 @@ func main() {
 			credits int
 			userid  string
 		)
-		err := db.QueryRow("SELECT user.credits, user.id FROM user INNER JOIN api_key ON user.id = api_key.user_id WHERE api_key.id = $1", bearer).Scan(&credits, &userid)
+		err := db.QueryRow("SELECT u.credits, u.id FROM public.user as u INNER JOIN api_key ON u.id = api_key.user_id WHERE api_key.id = $1", bearer).Scan(&credits, &userid)
 		if err == sql.ErrNoRows{
 			return c.String(401, "Unauthorized")
 		}
