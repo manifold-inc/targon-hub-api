@@ -187,13 +187,13 @@ func queryMiners(c *Context, req RequestBody) (ResponseInfo, error) {
 		finished := false
 		for reader.Scan() {
 			token := reader.Text()
-			if token == "data: [DONE]" {
-				sendEvent(c, token)
-				finished = true
-				break
-			}
 			token_bloc, found := strings.CutPrefix(token, "data: ")
 			if !found {
+				continue
+			}
+			if token_bloc == "[DONE]" {
+				sendEvent(c, token)
+				finished = true
 				break
 			}
 			var data Response
@@ -204,6 +204,7 @@ func queryMiners(c *Context, req RequestBody) (ResponseInfo, error) {
 			if data.Choices[0].Delta.Content == nil {
 				continue
 			}
+			c.Info.Println(data.Choices[0].Delta.Content)
 			sendEvent(c, token)
 		}
 		res.Body.Close()
