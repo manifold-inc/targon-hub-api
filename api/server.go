@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"strconv"
+	"strings"
 
 	"github.com/aidarkhanov/nanoid"
 	_ "github.com/go-sql-driver/mysql"
@@ -99,7 +100,7 @@ func main() {
 			credits int
 			userid  string
 		)
-		err := db.QueryRow("SELECT u.credits, u.id FROM public.user as u INNER JOIN api_key ON u.id = api_key.user_id WHERE api_key.id = $1", bearer).Scan(&credits, &userid)
+		err := db.QueryRow("SELECT u.credits, u.id FROM public.user as u INNER JOIN api_key ON u.id = api_key.user_id WHERE api_key.id = $1", strings.Split(bearer, " ")[1]).Scan(&credits, &userid)
 		if err == sql.ErrNoRows{
 			return c.String(401, "Unauthorized")
 		}
