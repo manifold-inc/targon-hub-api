@@ -196,18 +196,7 @@ func queryMiners(c *Context, req RequestBody) (ResponseInfo, error) {
 				finished = true
 				break
 			}
-			var data Response
-			err := json.Unmarshal([]byte(token_bloc), &data)
-			if err != nil {
-				break
-			}
-			if data.Choices[0].Delta.Content == nil {
-				continue
-			}
-			c.Info.Println(data.Choices[0].Delta.Content)
-			c.Info.Println(token)
-			c.Info.Println(token_bloc)
-			sendEvent(c, token)
+			sendEvent(c, token_bloc)
 		}
 		res.Body.Close()
 		if finished == false {
