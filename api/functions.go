@@ -196,12 +196,12 @@ func queryMiners(c *Context, req RequestBody) (ResponseInfo, error) {
 			if !found {
 				break
 			}
-			var data InferenceBody
+			var data Response
 			err := json.Unmarshal([]byte(token_bloc), &data)
 			if err != nil {
 				break
 			}
-			if data.Messages[0].Content == nil {
+			if data.Choices[0].Delta.Content == nil {
 				continue
 			}
 			sendEvent(c, token)
