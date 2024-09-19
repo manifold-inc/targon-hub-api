@@ -85,7 +85,7 @@ func main() {
 	})
 	defer client.Close()
 
-	e.POST("/api/chat/completions", func(c echo.Context) error {
+	e.POST("/v1/chat/completions", func(c echo.Context) error {
 		cc := c.(*Context)
 		cc.Request().Header.Add("Content-Type", "application/json")
 		bearer := cc.Request().Header.Get("Authorization")
