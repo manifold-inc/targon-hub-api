@@ -71,12 +71,6 @@ func sha256Hash(str []byte) string {
 	return hex.EncodeToString(sum)
 }
 
-func sendEvent(c *Context, data string) {
-	c.Info.Println(data)
-	fmt.Fprintf(c.Response(), "data: %s\n\n", data)
-	c.Response().Flush()
-}
-
 func getTopMiners(c *Context) []Miner {
 	rh := rejson.NewReJSONHandler()
 	rh.SetGoRedisClientWithContext(c.Request().Context(), client)
@@ -187,16 +181,14 @@ func queryMiners(c *Context, req RequestBody) (ResponseInfo, error) {
 		finished := false
 		for reader.Scan() {
 			token := reader.Text()
-			token_bloc, found := strings.CutPrefix(token, "data: ")
-			if !found {
-				continue
-			}
-			if token_bloc == "[DONE]" {
-				sendEvent(c, token_bloc)
+			if token == "data: [DONE]" {
+				fmt.Fprintf(c.Response(), token)
+				c.Response().Flush()
 				finished = true
 				break
 			}
-			sendEvent(c, token_bloc)
+			fmt.Fprintf(c.Response(), token)
+			c.Response().Flush()
 		}
 		res.Body.Close()
 		if finished == false {
