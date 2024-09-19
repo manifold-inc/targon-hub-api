@@ -180,7 +180,7 @@ func queryMiners(c *Context, req RequestBody) (ResponseInfo, error) {
 		finished := false
 		for reader.Scan() {
 			token := reader.Text()
-			fmt.Fprintf(c.Response(), token)
+			fmt.Fprintf(c.Response(), token+"\n\n")
 			c.Response().Flush()
 			if token == "data: [DONE]" {
 				finished = true
