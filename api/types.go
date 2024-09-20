@@ -58,4 +58,5 @@ type Event struct {
 type ResponseInfo struct {
 	Miner   Miner
 	Attempt int
+	Tokens  int
 }

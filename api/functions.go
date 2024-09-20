@@ -112,6 +112,7 @@ func queryMiners(c *Context, req []byte) (ResponseInfo, error) {
 	// query each miner at the same time with the variable context of the
 	// parent function via go routines
 	for index, miner := range miners {
+		tokens := 0
 		endpoint := "http://" + miner.Ip + ":" + fmt.Sprint(miner.Port) + "/v1/chat/completions"
 		timestamp := time.Now().UnixMilli()
 		id := uuid.New().String()
@@ -167,9 +168,11 @@ func queryMiners(c *Context, req []byte) (ResponseInfo, error) {
 		finished := false
 		for reader.Scan() {
 			token := reader.Text()
+			if len(token) > 5 {
+				tokens += 1
+			}
 			fmt.Fprintf(c.Response(), token+"\n\n")
 			c.Response().Flush()
-			c.Info.Println(token)
 			if token == "data: [DONE]" {
 				finished = true
 				break
@@ -179,7 +182,7 @@ func queryMiners(c *Context, req []byte) (ResponseInfo, error) {
 		if finished == false {
 			continue
 		}
-		return ResponseInfo{Miner: miner, Attempt: index}, nil
+		return ResponseInfo{Miner: miner, Attempt: index, Tokens: tokens}, nil
 	}
 	return ResponseInfo{}, errors.New("Ran out of miners to query")
 }

@@ -43,6 +43,7 @@ type Context struct {
 	Info *log.Logger
 	Warn *log.Logger
 	Err  *log.Logger
+	reqid string
 }
 
 func main() {
@@ -67,7 +68,7 @@ func main() {
 			InfoLog := log.New(os.Stdout, fmt.Sprintf("%sINFO [%s]: %s", Green, reqId, Reset), log.Ldate|log.Ltime|log.Lshortfile)
 			WarnLog := log.New(os.Stdout, fmt.Sprintf("%sWARNING [%s]: %s", Yellow, reqId, Reset), log.Ldate|log.Ltime|log.Lshortfile)
 			ErrLog := log.New(os.Stdout, fmt.Sprintf("%sERROR [%s]: %s", Red, reqId, Reset), log.Ldate|log.Ltime|log.Lshortfile)
-			cc := &Context{c, InfoLog, WarnLog, ErrLog}
+			cc := &Context{c, InfoLog, WarnLog, ErrLog, reqId}
 			return next(cc)
 		}
 	})
@@ -101,14 +102,14 @@ func main() {
 			userid  string
 		)
 		err := db.QueryRow("SELECT u.credits, u.id FROM public.user as u INNER JOIN api_key ON u.id = api_key.user_id WHERE api_key.id = $1", strings.Split(bearer, " ")[1]).Scan(&credits, &userid)
-		if err == sql.ErrNoRows{
+		if err == sql.ErrNoRows {
 			return c.String(401, "Unauthorized")
 		}
 		if err != nil {
 			cc.Err.Println(err)
 			return c.String(500, "")
 		}
-		if credits < 0{
+		if credits < 0 {
 			return c.String(403, "Out of credits")
 		}
 		body, _ := io.ReadAll(cc.Request().Body)
@@ -117,7 +118,8 @@ func main() {
 			return c.String(500, "")
 		}
 
-		_, ok := queryMiners(cc, body)
+		res, ok := queryMiners(cc, body)
+		cc.Info.Println(res.Tokens)
 		if ok != nil {
 			return c.String(500, ok.Error())
 		}
