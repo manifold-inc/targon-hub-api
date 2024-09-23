@@ -55,11 +55,16 @@ type Event struct {
 	Data  map[string]interface{} `json:"data"`
 }
 
-type ResponseInfo struct {
-	Miner           Miner
-	Attempt         int
-	Tokens          int
-	UserId          string
+type RequestInfo struct {
 	StartingCredits int
-	Responses        []map[string]interface{}
+	UserId          string
+	Body            []byte
+	Endpoint        string
+}
+
+type ResponseInfo struct {
+	Miner     Miner
+	Attempt   int
+	Tokens    int
+	Responses []map[string]interface{}
 }

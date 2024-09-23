@@ -24,6 +24,38 @@ import (
 	"github.com/nitishm/go-rejson/v4"
 )
 
+func preprocessOpenaiRequest(c *Context, db *sql.DB) (RequestInfo, error) {
+	c.Request().Header.Add("Content-Type", "application/json")
+	bearer := c.Request().Header.Get("Authorization")
+	c.Response().Header().Set("Content-Type", "text/event-stream; charset=utf-8")
+	c.Response().Header().Set("Cache-Control", "no-cache")
+	c.Response().Header().Set("Connection", "keep-alive")
+	c.Response().Header().Set("X-Accel-Buffering", "no")
+
+	var (
+		credits int
+		userid  string
+	)
+	err := db.QueryRow("SELECT user.credits, user.id FROM user INNER JOIN api_key ON user.id = api_key.user_id WHERE api_key.id = ?", strings.Split(bearer, " ")[1]).Scan(&credits, &userid)
+	if err == sql.ErrNoRows {
+		return RequestInfo{}, c.String(401, "Unauthorized")
+	}
+	if err != nil {
+		c.Err.Println(err)
+		return RequestInfo{}, c.String(500, "Interal Server Error")
+	}
+	if credits < 0 {
+		return RequestInfo{}, c.String(403, "Out of credits")
+	}
+	body, _ := io.ReadAll(c.Request().Body)
+	if err != nil {
+		c.Err.Println(err)
+		return RequestInfo{}, c.String(500, "Internal Server Error")
+	}
+
+	return RequestInfo{Body: body, UserId: userid, StartingCredits: credits}, nil
+}
+
 func safeEnv(env string) string {
 	// Lookup env variable, and panic if not present
 
@@ -94,7 +126,7 @@ func getTopMiners(c *Context) []Miner {
 	return miners
 }
 
-func queryMiners(c *Context, req []byte) (ResponseInfo, error) {
+func queryMiners(c *Context, req []byte, endpoint string) (ResponseInfo, error) {
 	// Query miners with llm request
 
 	// First we get our miners
@@ -115,7 +147,7 @@ func queryMiners(c *Context, req []byte) (ResponseInfo, error) {
 	// parent function via go routines
 	for index, miner := range miners {
 		tokens := 0
-		endpoint := "http://" + miner.Ip + ":" + fmt.Sprint(miner.Port) + "/v1/chat/completions"
+		endpoint := "http://" + miner.Ip + ":" + fmt.Sprint(miner.Port) + endpoint
 		timestamp := time.Now().UnixMilli()
 		id := uuid.New().String()
 		timestampInterval := int64(math.Ceil(float64(timestamp) / 1e4))
@@ -204,13 +236,13 @@ func queryMiners(c *Context, req []byte) (ResponseInfo, error) {
 	return ResponseInfo{}, errors.New("Ran out of miners to query")
 }
 
-func saveRequest(db *sql.DB, res ResponseInfo, req []byte, logger *log.Logger) {
+func saveRequest(db *sql.DB, res ResponseInfo, req RequestInfo, logger *log.Logger) {
 	var (
 		model string
 		cpt   int
 	)
 	var bodyJson map[string]interface{}
-	json.Unmarshal(req, &bodyJson)
+	json.Unmarshal(req.Body, &bodyJson)
 	mdl, ok := bodyJson["model"]
 	if !ok {
 		logger.Println("No model in body")
@@ -222,8 +254,8 @@ func saveRequest(db *sql.DB, res ResponseInfo, req []byte, logger *log.Logger) {
 		logger.Println(err)
 	}
 	_, err = db.Exec("UPDATE user SET credits=? WHERE id=?",
-		res.StartingCredits-(res.Tokens*cpt),
-		res.UserId)
+		req.StartingCredits-(res.Tokens*cpt),
+		req.UserId)
 	if err != nil {
 		logger.Println("Failed to update")
 		logger.Println(err)
@@ -234,13 +266,13 @@ func saveRequest(db *sql.DB, res ResponseInfo, req []byte, logger *log.Logger) {
 	pubId = "req_" + pubId
 	_, err = db.Exec(`
 	INSERT INTO 
-		request (pub_id, user_id, credits_used, tokens, request, response, model_id, uid, hotkey, coldkey, miner_address, attempt) 
-		VALUES	(?,      ?,       ?,            ?,      ?,       ?,        ?,     ?,   ?,      ?,       ?,            ?)`,
+		request (pub_id, user_id, credits_used, tokens, request, response, model_id, uid, hotkey, coldkey, miner_address, attempt, endpoint) 
+		VALUES	(?,      ?,       ?,            ?,      ?,       ?,        ?,        ?,   ?,      ?,       ?,             ?,       ?)`,
 		pubId,
-		res.UserId,
+		req.UserId,
 		res.Tokens*cpt,
 		res.Tokens,
-		string(req),
+		string(req.Body),
 		string(responseJson),
 		model,
 		res.Miner.Uid,
@@ -249,7 +281,9 @@ func saveRequest(db *sql.DB, res ResponseInfo, req []byte, logger *log.Logger) {
 		fmt.Sprintf("http://%s:%d",
 			res.Miner.Ip,
 			res.Miner.Port),
-		res.Attempt)
+		res.Attempt,
+		req.Endpoint,
+	)
 
 	if err != nil {
 		logger.Println("Failed to update")

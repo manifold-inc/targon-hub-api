@@ -3,11 +3,9 @@ package main
 import (
 	"database/sql"
 	"fmt"
-	"io"
 	"log"
 	"os"
 	"strconv"
-	"strings"
 
 	"github.com/aidarkhanov/nanoid"
 	_ "github.com/go-sql-driver/mysql"
@@ -86,44 +84,38 @@ func main() {
 
 	e.POST("/v1/chat/completions", func(c echo.Context) error {
 		cc := c.(*Context)
-		cc.Request().Header.Add("Content-Type", "application/json")
-		bearer := cc.Request().Header.Get("Authorization")
-		cc.Info.Println(bearer)
-		c.Response().Header().Set("Content-Type", "text/event-stream; charset=utf-8")
-		c.Response().Header().Set("Cache-Control", "no-cache")
-		c.Response().Header().Set("Connection", "keep-alive")
-		c.Response().Header().Set("X-Accel-Buffering", "no")
 		cc.Info.Printf("/api/chat/completions\n")
-		var (
-			credits int
-			userid  string
-		)
-		err := db.QueryRow("SELECT user.credits, user.id FROM user INNER JOIN api_key ON user.id = api_key.user_id WHERE api_key.id = ?", strings.Split(bearer, " ")[1]).Scan(&credits, &userid)
-		if err == sql.ErrNoRows {
-			return c.String(401, "Unauthorized")
-		}
+		request, err := preprocessOpenaiRequest(cc, db)
 		if err != nil {
 			cc.Err.Println(err)
-			return c.String(500, "")
+			return err
 		}
-		if credits < 0 {
-			return c.String(403, "Out of credits")
-		}
-		body, _ := io.ReadAll(cc.Request().Body)
-		if err != nil {
-			cc.Err.Println(err)
-			return c.String(500, "")
-		}
-
-		res, err := queryMiners(cc, body)
+		request.Endpoint = "CHAT"
+		res, err := queryMiners(cc, request.Body, "/v1/chat/completions")
 		if err != nil {
 			cc.Err.Println(err.Error())
 			return c.String(500, err.Error())
 		}
-		res.StartingCredits = credits
-		res.UserId = userid
 
-		go saveRequest(db, res, body, cc.Err)
+		go saveRequest(db, res, request, cc.Err)
+		return c.String(200, "")
+	})
+	e.POST("/v1/completions", func(c echo.Context) error {
+		cc := c.(*Context)
+		cc.Info.Printf("/api/completions\n")
+		request, err := preprocessOpenaiRequest(cc, db)
+		if err != nil {
+			cc.Err.Println(err)
+			return err
+		}
+		request.Endpoint = "COMPLETION"
+		res, err := queryMiners(cc, request.Body, "/v1/completions")
+		if err != nil {
+			cc.Err.Println(err.Error())
+			return c.String(500, err.Error())
+		}
+
+		go saveRequest(db, res, request, cc.Err)
 		return c.String(200, "")
 	})
 	e.Logger.Fatal(e.Start(":80"))
