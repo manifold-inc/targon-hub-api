@@ -17,11 +17,11 @@ import (
 )
 
 var (
-	HOTKEY           string
-	PUBLIC_KEY       string
-	PRIVATE_KEY      string
-	INSTANCE_UUID    string
-	DEBUG            bool
+	HOTKEY        string
+	PUBLIC_KEY    string
+	PRIVATE_KEY   string
+	INSTANCE_UUID string
+	DEBUG         bool
 
 	client *redis.Client
 )
@@ -115,17 +115,15 @@ func main() {
 			return c.String(500, "")
 		}
 
-		res, ok := queryMiners(cc, body)
-		cc.Info.Println(res.Tokens)
-		if ok != nil {
-			return c.String(500, ok.Error())
-		}
-		_, err = db.Exec("UPDATE user SET credits=? WHERE id=?", credits-res.Tokens, userid)
+		res, err := queryMiners(cc, body)
 		if err != nil {
-			log.Println("Failed to update")
-			log.Println(err)
-			return c.String(200, "")
+			cc.Err.Println(err.Error())
+			return c.String(500, err.Error())
 		}
+		res.StartingCredits = credits
+		res.UserId = userid
+
+		go saveRequest(db, res, body, cc.Err)
 		return c.String(200, "")
 	})
 	e.Logger.Fatal(e.Start(":80"))

@@ -15,9 +15,11 @@ import (
 	"math/rand"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/ChainSafe/go-schnorrkel"
+	"github.com/aidarkhanov/nanoid"
 	"github.com/google/uuid"
 	"github.com/nitishm/go-rejson/v4"
 )
@@ -147,6 +149,7 @@ func queryMiners(c *Context, req []byte) (ResponseInfo, error) {
 			r.Header.Set(key, value)
 		}
 		r.Close = true
+		r.WithContext(c.Request().Context())
 
 		res, err := httpClient.Do(r)
 		if err != nil {
@@ -166,32 +169,91 @@ func queryMiners(c *Context, req []byte) (ResponseInfo, error) {
 		c.Info.Printf("Attempt: %d Miner: %s %s\n", index, miner.Hotkey, miner.Coldkey)
 		reader := bufio.NewScanner(res.Body)
 		finished := false
+		var response map[string]interface{}
+		var responses []map[string]interface{}
 		for reader.Scan() {
-			token := reader.Text()
-			fmt.Fprintf(c.Response(), token+"\n\n")
-			c.Response().Flush()
-			if token == "data: [DONE]" {
-				finished = true
-				break
-			}
-			if len(token) > 5 {
-				tokens += 1
+			select {
+			case <-c.Request().Context().Done():
+				return ResponseInfo{}, errors.New("Request Canceled")
+			default:
+				token := reader.Text()
+				fmt.Fprintf(c.Response(), token+"\n\n")
+				c.Response().Flush()
+				if token == "data: [DONE]" {
+					finished = true
+					break
+				}
+				token, found := strings.CutPrefix(token, "data: ")
+				if found {
+					tokens += 1
+					err := json.Unmarshal([]byte(token), &response)
+					if err != nil {
+						c.Err.Printf("Failed decoing token string: %s", err)
+						continue
+					}
+					responses = append(responses, response)
+				}
 			}
 		}
 		res.Body.Close()
 		if finished == false {
 			continue
 		}
-		return ResponseInfo{Miner: miner, Attempt: index, Tokens: tokens}, nil
+		return ResponseInfo{Miner: miner, Attempt: index, Tokens: tokens, Responses: responses}, nil
 	}
 	return ResponseInfo{}, errors.New("Ran out of miners to query")
 }
 
-func updatOrganicRequest(db *sql.DB, res ResponseInfo) {
-	_, err := db.Exec("UPDATE organic_request SET uid=$1, hotkey=$2, coldkey=$3, miner_address=$4, attempt=$5 WHERE pub_id=$6", res.Miner.Uid, res.Miner.Hotkey, res.Miner.Coldkey, fmt.Sprintf("http://%s:%d", res.Miner.Ip, res.Miner.Port), res.Attempt)
+func saveRequest(db *sql.DB, res ResponseInfo, req []byte, logger *log.Logger) {
+	var (
+		model string
+		cpt   int
+	)
+	var bodyJson map[string]interface{}
+	json.Unmarshal(req, &bodyJson)
+	mdl, ok := bodyJson["model"]
+	if !ok {
+		logger.Println("No model in body")
+		return
+	}
+	err := db.QueryRow("SELECT id, cpt FROM model WHERE enabled = true AND id = ?", mdl.(string)).Scan(&model, &cpt)
 	if err != nil {
-		log.Println("Failed to update")
-		log.Println(err)
+		logger.Println("Failed get model")
+		logger.Println(err)
+	}
+	_, err = db.Exec("UPDATE user SET credits=? WHERE id=?",
+		res.StartingCredits-(res.Tokens*cpt),
+		res.UserId)
+	if err != nil {
+		logger.Println("Failed to update")
+		logger.Println(err)
+	}
+
+	responseJson, _ := json.Marshal(res.Responses)
+	pubId, _ := nanoid.Generate("0123456789abcdefghijklmnopqrstuvwxyz", 28)
+	pubId = "req_" + pubId
+	_, err = db.Exec(`
+	INSERT INTO 
+		request (pub_id, user_id, credits_used, tokens, request, response, model_id, uid, hotkey, coldkey, miner_address, attempt) 
+		VALUES	(?,      ?,       ?,            ?,      ?,       ?,        ?,     ?,   ?,      ?,       ?,            ?)`,
+		pubId,
+		res.UserId,
+		res.Tokens*cpt,
+		res.Tokens,
+		string(req),
+		string(responseJson),
+		model,
+		res.Miner.Uid,
+		res.Miner.Hotkey,
+		res.Miner.Coldkey,
+		fmt.Sprintf("http://%s:%d",
+			res.Miner.Ip,
+			res.Miner.Port),
+		res.Attempt)
+
+	if err != nil {
+		logger.Println("Failed to update")
+		logger.Println(err)
 		return
 	}
 	return

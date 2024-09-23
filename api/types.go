@@ -56,7 +56,10 @@ type Event struct {
 }
 
 type ResponseInfo struct {
-	Miner   Miner
-	Attempt int
-	Tokens  int
+	Miner           Miner
+	Attempt         int
+	Tokens          int
+	UserId          string
+	StartingCredits int
+	Responses        []map[string]interface{}
 }
