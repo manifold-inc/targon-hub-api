@@ -22,9 +22,7 @@ ssl certificate.
 Run `python scripts/setup.py --wallet [your wallet name]` and copy the ss58,
 public, and private keys to the .env file
 
-## 4. Copy your HUB_SECRET_KEY from the FE
-
-## 5. Start docker compose
+## 4. Start docker compose
 
 Run `docker compose build` and `docker compose up -d`
 

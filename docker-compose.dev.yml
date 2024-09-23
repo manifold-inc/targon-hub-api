@@ -1,13 +1,13 @@
 services:
-  proxy:
+  api:
     environment:
       - DEBUG=true
     labels:
       - traefik.enable=true
-      - traefik.http.routers.proxy.rule=Host(`localhost`)
-      - traefik.http.routers.proxy.tls=false
-      - traefik.http.routers.proxy.tls.certresolver=
-      - traefik.http.services.proxy.loadbalancer.server.port=80
+      - traefik.http.routers.api.rule=Host(`localhost`)
+      - traefik.http.routers.api.tls=false
+      - traefik.http.routers.api.tls.certresolver=
+      - traefik.http.services.api.loadbalancer.server.port=80
   traefik:
     ports:
       - 80:80

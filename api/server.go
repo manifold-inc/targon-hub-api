@@ -14,11 +14,9 @@ import (
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 	"github.com/redis/go-redis/v9"
-	"github.com/uptrace/bun/driver/pgdriver"
 )
 
 var (
-	HUB_SECRET_TOKEN string
 	HOTKEY           string
 	PUBLIC_KEY       string
 	PRIVATE_KEY      string
@@ -40,9 +38,9 @@ var White = "\033[97m"
 
 type Context struct {
 	echo.Context
-	Info *log.Logger
-	Warn *log.Logger
-	Err  *log.Logger
+	Info  *log.Logger
+	Warn  *log.Logger
+	Err   *log.Logger
 	reqid string
 }
 
@@ -50,8 +48,7 @@ func main() {
 	HOTKEY = safeEnv("HOTKEY")
 	PUBLIC_KEY = safeEnv("PUBLIC_KEY")
 	PRIVATE_KEY = safeEnv("PRIVATE_KEY")
-	HUB_SECRET_TOKEN = safeEnv("HUB_SECRET_TOKEN")
-	DB_URL := safeEnv("DB_URL")
+	DSN := safeEnv("DSN")
 	INSTANCE_UUID = uuid.New().String()
 	debug, present := os.LookupEnv("DEBUG")
 
@@ -73,7 +70,7 @@ func main() {
 		}
 	})
 	var err error
-	db := sql.OpenDB(pgdriver.NewConnector(pgdriver.WithDSN(DB_URL)))
+	db, err := sql.Open("mysql", DSN)
 	err = db.Ping()
 	if err != nil {
 		log.Println(err.Error())
@@ -101,7 +98,7 @@ func main() {
 			credits int
 			userid  string
 		)
-		err := db.QueryRow("SELECT u.credits, u.id FROM public.user as u INNER JOIN api_key ON u.id = api_key.user_id WHERE api_key.id = $1", strings.Split(bearer, " ")[1]).Scan(&credits, &userid)
+		err := db.QueryRow("SELECT user.credits, user.id FROM user INNER JOIN api_key ON user.id = api_key.user_id WHERE api_key.id = ?", strings.Split(bearer, " ")[1]).Scan(&credits, &userid)
 		if err == sql.ErrNoRows {
 			return c.String(401, "Unauthorized")
 		}
@@ -122,6 +119,12 @@ func main() {
 		cc.Info.Println(res.Tokens)
 		if ok != nil {
 			return c.String(500, ok.Error())
+		}
+		_, err = db.Exec("UPDATE user SET credits=? WHERE id=?", credits-res.Tokens, userid)
+		if err != nil {
+			log.Println("Failed to update")
+			log.Println(err)
+			return c.String(200, "")
 		}
 		return c.String(200, "")
 	})

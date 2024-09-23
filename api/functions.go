@@ -168,14 +168,14 @@ func queryMiners(c *Context, req []byte) (ResponseInfo, error) {
 		finished := false
 		for reader.Scan() {
 			token := reader.Text()
-			if len(token) > 5 {
-				tokens += 1
-			}
 			fmt.Fprintf(c.Response(), token+"\n\n")
 			c.Response().Flush()
 			if token == "data: [DONE]" {
 				finished = true
 				break
+			}
+			if len(token) > 5 {
+				tokens += 1
 			}
 		}
 		res.Body.Close()

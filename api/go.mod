@@ -5,7 +5,7 @@ go 1.22.0
 require (
 	github.com/ChainSafe/go-schnorrkel v1.1.0
 	github.com/aidarkhanov/nanoid v1.0.8
-	github.com/go-sql-driver/mysql v1.8.0
+	github.com/go-sql-driver/mysql v1.8.1
 	github.com/google/uuid v1.6.0
 	github.com/labstack/echo/v4 v4.11.4
 	github.com/nitishm/go-rejson/v4 v4.2.0
