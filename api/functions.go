@@ -248,10 +248,11 @@ func saveRequest(db *sql.DB, res ResponseInfo, req RequestInfo, logger *log.Logg
 		logger.Println("No model in body")
 		return
 	}
-	err := db.QueryRow("SELECT id, cpt FROM model WHERE enabled = true AND id = ?", model.(string)).Scan(&model_id, &cpt)
+	err := db.QueryRow("SELECT id, cpt FROM model WHERE enabled = true AND name = ?", model.(string)).Scan(&model_id, &cpt)
 	if err != nil {
-		logger.Println("Failed get model")
+		logger.Println("Failed to get model")
 		logger.Println(err)
+		return
 	}
 	_, err = db.Exec("UPDATE user SET credits=? WHERE id=?",
 		req.StartingCredits-(res.Tokens*cpt),
