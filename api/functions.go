@@ -34,7 +34,7 @@ func preprocessOpenaiRequest(c *Context, db *sql.DB) (RequestInfo, error) {
 
 	var (
 		credits int
-		userid  string
+		userid  int
 	)
 	err := db.QueryRow("SELECT user.credits, user.id FROM user INNER JOIN api_key ON user.id = api_key.user_id WHERE api_key.id = ?", strings.Split(bearer, " ")[1]).Scan(&credits, &userid)
 	if err == sql.ErrNoRows {
@@ -238,17 +238,17 @@ func queryMiners(c *Context, req []byte, endpoint string) (ResponseInfo, error) 
 
 func saveRequest(db *sql.DB, res ResponseInfo, req RequestInfo, logger *log.Logger) {
 	var (
-		model string
+		model_id int
 		cpt   int
 	)
 	var bodyJson map[string]interface{}
 	json.Unmarshal(req.Body, &bodyJson)
-	mdl, ok := bodyJson["model"]
+	model, ok := bodyJson["model"]
 	if !ok {
 		logger.Println("No model in body")
 		return
 	}
-	err := db.QueryRow("SELECT id, cpt FROM model WHERE enabled = true AND id = ?", mdl.(string)).Scan(&model, &cpt)
+	err := db.QueryRow("SELECT id, cpt FROM model WHERE enabled = true AND id = ?", model.(string)).Scan(&model_id, &cpt)
 	if err != nil {
 		logger.Println("Failed get model")
 		logger.Println(err)
@@ -274,7 +274,7 @@ func saveRequest(db *sql.DB, res ResponseInfo, req RequestInfo, logger *log.Logg
 		res.Tokens,
 		string(req.Body),
 		string(responseJson),
-		model,
+		model_id,
 		res.Miner.Uid,
 		res.Miner.Hotkey,
 		res.Miner.Coldkey,
