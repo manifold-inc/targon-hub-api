@@ -14,8 +14,6 @@ type Delta struct {
 
 type RequestBody struct {
 	Model     string        `json:"model"`
-	Messages  []ChatMessage `json:"messages"`
-	MaxTokens int           `json:"max_tokens"`
 }
 
 type Miner struct {

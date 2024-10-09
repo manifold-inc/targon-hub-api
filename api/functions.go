@@ -146,6 +146,7 @@ func queryMiners(c *Context, req []byte, endpoint string) (ResponseInfo, error) 
 	var requestBody RequestBody
 	err := json.Unmarshal(req, requestBody)
 	if err != nil {
+		c.Err.Printf("Error unmarshaling request body: %s\n",err.Error())
 		return ResponseInfo{}, errors.New("Invalid Body")
 	}
 
