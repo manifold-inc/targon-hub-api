@@ -143,6 +143,12 @@ func queryMiners(c *Context, req []byte, endpoint string) (ResponseInfo, error) 
 	}
 	httpClient := http.Client{Transport: tr, Timeout: 10 * time.Second}
 
+	var requestBody RequestBody
+	err := json.Unmarshal(req, requestBody)
+	if err != nil {
+		return ResponseInfo{}, errors.New("Invalid Body")
+	}
+
 	// query each miner at the same time with the variable context of the
 	// parent function via go routines
 	for index, miner := range miners {
@@ -166,6 +172,7 @@ func queryMiners(c *Context, req []byte, endpoint string) (ResponseInfo, error) 
 			"Epistula-Secret-Signature-0": signMessage([]byte(fmt.Sprintf("%d.%s", timestampInterval-1, miner.Hotkey)), PUBLIC_KEY, PRIVATE_KEY),
 			"Epistula-Secret-Signature-1": signMessage([]byte(fmt.Sprintf("%d.%s", timestampInterval, miner.Hotkey)), PUBLIC_KEY, PRIVATE_KEY),
 			"Epistula-Secret-Signature-2": signMessage([]byte(fmt.Sprintf("%d.%s", timestampInterval+1, miner.Hotkey)), PUBLIC_KEY, PRIVATE_KEY),
+			"X-Targon-Model":              requestBody.Model,
 			"Content-Type":                "application/json",
 			"Connection":                  "keep-alive",
 		}
@@ -239,7 +246,7 @@ func queryMiners(c *Context, req []byte, endpoint string) (ResponseInfo, error) 
 func saveRequest(db *sql.DB, res ResponseInfo, req RequestInfo, logger *log.Logger) {
 	var (
 		model_id int
-		cpt   int
+		cpt      int
 	)
 	var bodyJson map[string]interface{}
 	json.Unmarshal(req.Body, &bodyJson)
