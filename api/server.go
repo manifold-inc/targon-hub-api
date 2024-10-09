@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"strconv"
+	"strings"
 
 	"github.com/aidarkhanov/nanoid"
 	_ "github.com/go-sql-driver/mysql"
@@ -91,6 +92,7 @@ func main() {
 			return err
 		}
 		request.Endpoint = "CHAT"
+		cc.Info.Println(string(request.Body))
 		res, err := queryMiners(cc, request.Body, "/v1/chat/completions")
 		if err != nil {
 			cc.Err.Println(err.Error())
