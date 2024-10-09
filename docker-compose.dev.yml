@@ -15,3 +15,11 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - $PWD/traefik/traefik.dev.toml:/etc/traefik/traefik.toml
+  redis-commander:
+      image: rediscommander/redis-commander:latest
+      restart: always
+      environment:
+        REDIS_HOST: cache
+        REDIS_PORT: 6379
+      ports:
+        - 8081:8081

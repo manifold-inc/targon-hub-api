@@ -13,7 +13,7 @@ type Delta struct {
 }
 
 type RequestBody struct {
-	Model     string        `json:"model"`
+	Model string `json:"model"`
 }
 
 type Miner struct {
@@ -62,7 +62,7 @@ type RequestInfo struct {
 
 type ResponseInfo struct {
 	Miner     Miner
-	Attempt   int
 	Tokens    int
 	Responses []map[string]interface{}
+	Success   bool
 }

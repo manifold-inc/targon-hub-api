@@ -15,6 +15,7 @@ services:
         condition: service_healthy
 
   miner-cache:
+    env_file: .env
     build:
       context: ./miner-cache
     restart: always
