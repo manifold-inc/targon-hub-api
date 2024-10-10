@@ -99,6 +99,11 @@ func main() {
 			return c.String(500, err.Error())
 		}
 
+		if !res.Success {
+			cc.Warn.Printf("Miner: %s %s\nTimed out\n", res.Miner.Hotkey, res.Miner.Coldkey)
+			return c.String(500, fmt.Sprintf("Miner UID %d Timed out. Try Again.", res.Miner.Uid))
+		}
+
 		go saveRequest(db, res, *request, cc.Err)
 		return c.String(200, "")
 	})
