@@ -38,6 +38,7 @@ func preprocessOpenaiRequest(c *Context, db *sql.DB) (*RequestInfo, error) {
 	)
 	err := db.QueryRow("SELECT user.credits, user.id FROM user INNER JOIN api_key ON user.id = api_key.user_id WHERE api_key.id = ?", strings.Split(bearer, " ")[1]).Scan(&credits, &userid)
 	if err == sql.ErrNoRows {
+		c.Warn.Println(bearer)
 		return nil, &RequestError{401, errors.New("Unauthorized")}
 	}
 	if err != nil {
