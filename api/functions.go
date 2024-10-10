@@ -13,6 +13,7 @@ import (
 	"log"
 	"math"
 	"math/rand"
+	"net"
 	"net/http"
 	"os"
 	"strings"
@@ -145,9 +146,12 @@ func queryMiners(c *Context, req []byte, method string) (ResponseInfo, error) {
 
 	// Build the rest of the body hash
 	tr := &http.Transport{
-		MaxIdleConns:      10,
-		IdleConnTimeout:   30 * time.Second,
-		DisableKeepAlives: false,
+		Dial: (&net.Dialer{
+			Timeout: 1 * time.Second,
+		}).Dial,
+		TLSHandshakeTimeout:   1 * time.Second,
+		ResponseHeaderTimeout: 2 * time.Second,
+		DisableKeepAlives:     false,
 	}
 	httpClient := http.Client{Transport: tr, Timeout: 10 * time.Second}
 
