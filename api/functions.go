@@ -24,7 +24,7 @@ import (
 	"github.com/nitishm/go-rejson/v4"
 )
 
-func preprocessOpenaiRequest(c *Context, db *sql.DB) (RequestInfo, error) {
+func preprocessOpenaiRequest(c *Context, db *sql.DB) (*RequestInfo, error) {
 	c.Request().Header.Add("Content-Type", "application/json")
 	bearer := c.Request().Header.Get("Authorization")
 	c.Response().Header().Set("Content-Type", "text/event-stream; charset=utf-8")
@@ -38,22 +38,22 @@ func preprocessOpenaiRequest(c *Context, db *sql.DB) (RequestInfo, error) {
 	)
 	err := db.QueryRow("SELECT user.credits, user.id FROM user INNER JOIN api_key ON user.id = api_key.user_id WHERE api_key.id = ?", strings.Split(bearer, " ")[1]).Scan(&credits, &userid)
 	if err == sql.ErrNoRows {
-		return RequestInfo{}, c.String(401, "Unauthorized")
+		return nil, &RequestError{401, errors.New("Unauthorized")}
 	}
 	if err != nil {
 		c.Err.Println(err)
-		return RequestInfo{}, c.String(500, "Interal Server Error")
+		return nil, &RequestError{500, errors.New("Interal Server Error")}
 	}
 	if credits < 0 {
-		return RequestInfo{}, c.String(403, "Out of credits")
+		return nil, &RequestError{403, errors.New("Out of credits")}
 	}
 	body, _ := io.ReadAll(c.Request().Body)
 	if err != nil {
 		c.Err.Println(err)
-		return RequestInfo{}, c.String(500, "Internal Server Error")
+		return nil, &RequestError{500, errors.New("Internal Server Error")}
 	}
 
-	return RequestInfo{Body: body, UserId: userid, StartingCredits: credits}, nil
+	return &RequestInfo{Body: body, UserId: userid, StartingCredits: credits}, nil
 }
 
 func safeEnv(env string) string {

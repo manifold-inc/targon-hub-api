@@ -87,8 +87,9 @@ func main() {
 		cc.Info.Printf("/api/chat/completions\n")
 		request, err := preprocessOpenaiRequest(cc, db)
 		if err != nil {
+			error := err.(*RequestError)
 			cc.Err.Println(err)
-			return err
+			return cc.String(error.StatusCode, error.Err.Error())
 		}
 		request.Endpoint = "CHAT"
 		cc.Info.Println(string(request.Body))
@@ -98,7 +99,7 @@ func main() {
 			return c.String(500, err.Error())
 		}
 
-		go saveRequest(db, res, request, cc.Err)
+		go saveRequest(db, res, *request, cc.Err)
 		return c.String(200, "")
 	})
 	e.POST("/v1/completions", func(c echo.Context) error {
@@ -106,8 +107,9 @@ func main() {
 		cc.Info.Printf("/api/completions\n")
 		request, err := preprocessOpenaiRequest(cc, db)
 		if err != nil {
+			error := err.(*RequestError)
 			cc.Err.Println(err)
-			return err
+			return cc.String(error.StatusCode, error.Err.Error())
 		}
 		request.Endpoint = "COMPLETION"
 		res, err := queryMiners(cc, request.Body, "/v1/completions")
@@ -116,7 +118,7 @@ func main() {
 			return c.String(500, err.Error())
 		}
 
-		go saveRequest(db, res, request, cc.Err)
+		go saveRequest(db, res, *request, cc.Err)
 		return c.String(200, "")
 	})
 	e.Logger.Fatal(e.Start(":80"))
