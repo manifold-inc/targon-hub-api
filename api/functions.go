@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
@@ -182,6 +183,10 @@ func queryMiners(c *Context, req []byte, method string) (ResponseInfo, error) {
 		"Connection":                  "keep-alive",
 	}
 
+	ctx, cancel := context.WithCancel(c.Request().Context())
+	timer := time.AfterFunc(3*time.Second, func() {
+		cancel()
+	})
 	r, err := http.NewRequest("POST", endpoint, bytes.NewBuffer(req))
 	if err != nil {
 		c.Warn.Printf("Failed miner request: %s\n", err.Error())
@@ -195,6 +200,7 @@ func queryMiners(c *Context, req []byte, method string) (ResponseInfo, error) {
 	r.Close = true
 	r.WithContext(c.Request().Context())
 
+	r = r.WithContext(ctx)
 	res, err := httpClient.Do(r)
 	if err != nil {
 		c.Warn.Printf("Miner: %s %s\nError: %s\n", miner.Hotkey, miner.Coldkey, err.Error())
@@ -220,6 +226,7 @@ func queryMiners(c *Context, req []byte, method string) (ResponseInfo, error) {
 		case <-c.Request().Context().Done():
 			return ResponseInfo{}, errors.New("Request Canceled")
 		default:
+			timer.Reset(2 * time.Second)
 			token := reader.Text()
 			fmt.Fprintf(c.Response(), token+"\n\n")
 			c.Response().Flush()
