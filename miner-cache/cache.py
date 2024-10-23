@@ -17,8 +17,7 @@ import httpx
 
 async def sync_miners():
     metagraph = subtensor.metagraph(netuid=4)
-    non_zero = sum([1 for x in metagraph.incentive if x])
-    indices = numpy.argsort(metagraph.incentive)[-non_zero:]
+    indices = numpy.argsort(metagraph.incentive)[-50:] # Top 50 miners
 
     # Get the corresponding uids
     uids_with_highest_incentives: List[int] = metagraph.uids[indices].tolist()
