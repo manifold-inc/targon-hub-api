@@ -148,10 +148,10 @@ func queryMiners(c *Context, req []byte, method string) (ResponseInfo, error) {
 	// Build the rest of the body hash
 	tr := &http.Transport{
 		Dial: (&net.Dialer{
-			Timeout: 1 * time.Second,
+			Timeout: 2 * time.Second,
 		}).Dial,
-		TLSHandshakeTimeout:   1 * time.Second,
-		ResponseHeaderTimeout: 2 * time.Second,
+		TLSHandshakeTimeout:   2 * time.Second,
+		ResponseHeaderTimeout: 4 * time.Second,
 		DisableKeepAlives:     false,
 	}
 	httpClient := http.Client{Transport: tr, Timeout: 10 * time.Second}
@@ -184,7 +184,7 @@ func queryMiners(c *Context, req []byte, method string) (ResponseInfo, error) {
 	}
 
 	ctx, cancel := context.WithCancel(c.Request().Context())
-	timer := time.AfterFunc(3*time.Second, func() {
+	timer := time.AfterFunc(4*time.Second, func() {
 		cancel()
 	})
 	r, err := http.NewRequest("POST", endpoint, bytes.NewBuffer(req))
