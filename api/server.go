@@ -94,6 +94,8 @@ func main() {
 		request.Endpoint = "CHAT"
 		cc.Info.Println(string(request.Body))
 		res, err := queryMiners(cc, request.Body, "/v1/chat/completions")
+		go saveRequest(db, res, *request, cc.Err)
+
 		if err != nil {
 			cc.Err.Println(err.Error())
 			return c.String(500, err.Error())
@@ -104,7 +106,6 @@ func main() {
 			return c.String(500, fmt.Sprintf("Miner UID %d Timed out. Try Again.", res.Miner.Uid))
 		}
 
-		go saveRequest(db, res, *request, cc.Err)
 		return c.String(200, "")
 	})
 	e.POST("/v1/completions", func(c echo.Context) error {
@@ -118,12 +119,19 @@ func main() {
 		}
 		request.Endpoint = "COMPLETION"
 		res, err := queryMiners(cc, request.Body, "/v1/completions")
+
+		go saveRequest(db, res, *request, cc.Err)
+
 		if err != nil {
 			cc.Err.Println(err.Error())
 			return c.String(500, err.Error())
 		}
 
-		go saveRequest(db, res, *request, cc.Err)
+		if !res.Success {
+			cc.Warn.Printf("Miner: %s %s\nTimed out\n", res.Miner.Hotkey, res.Miner.Coldkey)
+			return c.String(500, fmt.Sprintf("Miner UID %d Timed out. Try Again.", res.Miner.Uid))
+		}
+
 		return c.String(200, "")
 	})
 	e.Logger.Fatal(e.Start(":80"))
