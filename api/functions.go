@@ -219,7 +219,6 @@ func queryMiners(c *Context, req []byte, method string) (ResponseInfo, error) {
 	c.Info.Printf("Miner: %s %s\n", miner.Hotkey, miner.Coldkey)
 	reader := bufio.NewScanner(res.Body)
 	finished := false
-	var response map[string]interface{}
 	var responses []map[string]interface{}
 	for reader.Scan() {
 		select {
@@ -237,6 +236,7 @@ func queryMiners(c *Context, req []byte, method string) (ResponseInfo, error) {
 			token, found := strings.CutPrefix(token, "data: ")
 			if found {
 				tokens += 1
+				var response map[string]interface{}
 				err := json.Unmarshal([]byte(token), &response)
 				if err != nil {
 					c.Err.Printf("Failed decoing token string: %s", err)
