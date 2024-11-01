@@ -19,6 +19,7 @@ var (
 	PUBLIC_KEY    string
 	PRIVATE_KEY   string
 	INSTANCE_UUID string
+	ENDON_URL     string
 	DEBUG         bool
 
 	client *redis.Client
@@ -47,6 +48,7 @@ func main() {
 	PUBLIC_KEY = safeEnv("PUBLIC_KEY")
 	PRIVATE_KEY = safeEnv("PRIVATE_KEY")
 	DSN := safeEnv("DSN")
+	ENDON_URL = safeEnv("ENDON_URL")
 	INSTANCE_UUID = uuid.New().String()
 	debug, present := os.LookupEnv("DEBUG")
 
@@ -89,6 +91,7 @@ func main() {
 		if err != nil {
 			error := err.(*RequestError)
 			cc.Err.Println(err)
+			sendErrorToEndon(err, "/v1/chat/completions")
 			return cc.String(error.StatusCode, error.Err.Error())
 		}
 		request.Endpoint = "CHAT"
@@ -98,6 +101,7 @@ func main() {
 
 		if err != nil {
 			cc.Err.Println(err.Error())
+			sendErrorToEndon(err, "/v1/chat/completions")
 			return c.String(500, err.Error())
 		}
 
@@ -115,6 +119,7 @@ func main() {
 		if err != nil {
 			error := err.(*RequestError)
 			cc.Err.Println(err)
+			sendErrorToEndon(err, "/v1/completions")
 			return cc.String(error.StatusCode, error.Err.Error())
 		}
 		request.Endpoint = "COMPLETION"
@@ -124,6 +129,7 @@ func main() {
 
 		if err != nil {
 			cc.Err.Println(err.Error())
+			sendErrorToEndon(err, "/v1/completions")
 			return c.String(500, err.Error())
 		}
 

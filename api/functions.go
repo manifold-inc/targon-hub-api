@@ -310,3 +310,40 @@ func saveRequest(db *sql.DB, res ResponseInfo, req RequestInfo, logger *log.Logg
 	}
 	return
 }
+
+func sendErrorToEndon(err error, endpoint string) {
+	payload := ErrorReport{
+		Service:  "targon-hub-api",
+		Endpoint: endpoint,
+		Error:    err.Error(),
+	}
+
+	jsonData, jsonErr := json.Marshal(payload)
+	if jsonErr != nil {
+		log.Printf("Failed to marshal error payload: %v\n", jsonErr)
+		return
+	}
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	req, reqErr := http.NewRequest(http.MethodPost, ENDON_URL, bytes.NewBuffer(jsonData))
+	if reqErr != nil {
+		log.Printf("Failed to create Endon request: %v\n", reqErr)
+		return
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, respErr := client.Do(req)
+	if respErr != nil {
+		log.Printf("Failed to send error to Endon: %v\n", respErr)
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 400 {
+		log.Printf("Failed to report error to Endon. Status: %d\n", resp.StatusCode)
+		return
+	}
+
+	fmt.Printf("Successfully sent error to Endon: %s\n", endpoint)
+}
