@@ -76,3 +76,10 @@ type ResponseInfo struct {
 	Responses []map[string]interface{}
 	Success   bool
 }
+
+type ErrorReport struct {
+	Service   string `json:"service"`
+	Endpoint  string `json:"endpoint"`
+	Error     string `json:"error"`
+	Traceback string `json:"traceback,omitempty"`
+}
