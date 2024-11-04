@@ -5,8 +5,8 @@ on:
     branches:
       - "main"
     paths:
-      - "api"
-      - "miner-cache"
+      - "api/**"
+      - "miner-cache/**"
 
 jobs:
   docker:
