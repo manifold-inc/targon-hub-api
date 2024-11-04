@@ -24,7 +24,8 @@ push: build
   export VERSION=$(git rev-parse --short HEAD) && docker compose build && docker compose push
   @printf " {{GREEN}}{{CHECK}} Images Pushed {{CHECK}} {{RESET}}"
 
-prod: build
+prod:
+  docker compose pull
   docker compose up -d
   @printf " {{GREEN}}{{CHECK}} Images Started {{CHECK}} {{RESET}}"
 
