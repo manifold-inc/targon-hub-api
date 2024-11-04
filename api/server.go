@@ -91,7 +91,6 @@ func main() {
 		if err != nil {
 			error := err.(*RequestError)
 			cc.Err.Println(err)
-			sendErrorToEndon(err, "/v1/chat/completions")
 			return cc.String(error.StatusCode, error.Err.Error())
 		}
 		request.Endpoint = "CHAT"
@@ -119,7 +118,6 @@ func main() {
 		if err != nil {
 			error := err.(*RequestError)
 			cc.Err.Println(err)
-			sendErrorToEndon(err, "/v1/completions")
 			return cc.String(error.StatusCode, error.Err.Error())
 		}
 		request.Endpoint = "COMPLETION"

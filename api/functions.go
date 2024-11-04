@@ -45,6 +45,7 @@ func preprocessOpenaiRequest(c *Context, db *sql.DB) (*RequestInfo, error) {
 	}
 	if err != nil {
 		c.Err.Println(err)
+		sendErrorToEndon(err, "/v1/chat/completions")
 		return nil, &RequestError{500, errors.New("Interal Server Error")}
 	}
 	if credits < 0 {
