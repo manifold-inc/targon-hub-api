@@ -19,12 +19,13 @@ up extra='': build
   docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --force-recreate {{extra}}
   @printf " {{GREEN}}{{CHECK}} Images Started {{CHECK}} {{RESET}}"
 
+push: build
+  docker compose push
+  export VERSION=$(git rev-parse --short HEAD) && docker compose build && docker compose push
+  @printf " {{GREEN}}{{CHECK}} Images Pushed {{CHECK}} {{RESET}}"
+
 prod: build
   docker compose up -d
-  @printf " {{GREEN}}{{CHECK}} Images Started {{CHECK}} {{RESET}}"
-
-upgrade: pull build
-  docker compose up -d proxy uid-cacher
   @printf " {{GREEN}}{{CHECK}} Images Started {{CHECK}} {{RESET}}"
 
 down:

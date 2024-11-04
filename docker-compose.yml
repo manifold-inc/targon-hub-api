@@ -1,5 +1,6 @@
 services:
   api:
+    image: manifoldlabs/targon-hub-api:${VERSION:-latest}
     labels:
       - traefik.enable=true
       - traefik.http.routers.api.rule=Host(`${PROXY_URL}`)
@@ -15,6 +16,7 @@ services:
         condition: service_healthy
 
   miner-cache:
+    image: manifoldlabs/targon-hub-miner-cache:${VERSION:-latest}
     env_file: .env
     build:
       context: ./miner-cache
