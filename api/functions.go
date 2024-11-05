@@ -39,7 +39,7 @@ func preprocessOpenaiRequest(c *Context, db *sql.DB) (*RequestInfo, error) {
 		userid  int
 	)
 	err := db.QueryRow("SELECT user.credits, user.id FROM user INNER JOIN api_key ON user.id = api_key.user_id WHERE api_key.id = ?", strings.Split(bearer, " ")[1]).Scan(&credits, &userid)
-	if err == sql.ErrNoRows {
+	if err == sql.ErrNoRows && !DEBUG {
 		c.Warn.Println(bearer)
 		return nil, &RequestError{401, errors.New("Unauthorized")}
 	}
@@ -51,12 +51,39 @@ func preprocessOpenaiRequest(c *Context, db *sql.DB) (*RequestInfo, error) {
 	if credits < 0 {
 		return nil, &RequestError{403, errors.New("Out of credits")}
 	}
-	body, _ := io.ReadAll(c.Request().Body)
+	var payload map[string]interface{}
+	body, err := io.ReadAll(c.Request().Body)
+	err = json.Unmarshal(body, &payload)
 	if err != nil {
 		c.Err.Println(err)
+		sendErrorToEndon(err, "/v1/chat/completions")
 		return nil, &RequestError{500, errors.New("Internal Server Error")}
 	}
 
+	if stream, ok := payload["stream"]; !ok || !stream.(bool) {
+		return nil, &RequestError{400, errors.New("Targon currently only supports streaming requests")}
+	}
+	// Defaults
+	if _, ok := payload["seed"]; !ok {
+		payload["seed"] = rand.Intn(100000)
+	}
+	if _, ok := payload["temperature"]; !ok {
+		payload["temperature"] = 1
+	}
+	if _, ok := payload["max_tokens"]; !ok {
+		payload["max_tokens"] = 128
+	}
+	if logprobs, ok := payload["logprobs"]; !ok || !logprobs.(bool) {
+		payload["logprobs"] = true
+	}
+
+	body, err = json.Marshal(payload)
+	fmt.Println(string(body))
+	if err != nil {
+		c.Err.Println(err)
+		sendErrorToEndon(err, "/v1/chat/completions")
+		return nil, &RequestError{500, errors.New("Internal Server Error")}
+	}
 	return &RequestInfo{Body: body, UserId: userid, StartingCredits: credits}, nil
 }
 
@@ -255,6 +282,9 @@ func queryMiners(c *Context, req []byte, method string) (ResponseInfo, error) {
 }
 
 func saveRequest(db *sql.DB, res ResponseInfo, req RequestInfo, logger *log.Logger) {
+	if DEBUG {
+		return
+	}
 	var (
 		model_id int
 		cpt      int
@@ -313,6 +343,9 @@ func saveRequest(db *sql.DB, res ResponseInfo, req RequestInfo, logger *log.Logg
 }
 
 func sendErrorToEndon(err error, endpoint string) {
+	if DEBUG {
+		return
+	}
 	payload := ErrorReport{
 		Service:  "targon-hub-api",
 		Endpoint: endpoint,
