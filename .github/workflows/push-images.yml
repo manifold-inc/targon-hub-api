@@ -48,3 +48,12 @@ jobs:
           tags: |
             manifoldlabs/targon-hub-miner-cache:latest
             manifoldlabs/targon-hub-miner-cache:${{ steps.vars.outputs.sha_short }}
+
+      - name: Build and push targon hub vram estimator
+        uses: docker/build-push-action@v6
+        with:
+          context: vram-estimator
+          push: true
+          tags: |
+            manifoldlabs/targon-hub-vram-estimator:latest
+            manifoldlabs/targon-hub-vram-estimator:${{ steps.vars.outputs.sha_short }}
