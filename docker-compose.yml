@@ -3,7 +3,7 @@ services:
     image: manifoldlabs/targon-hub-vram-estimator:${VERSION:-latest}
     labels:
       - traefik.enable=true
-      - traefik.http.routers.vram.rule=Host(`${PROXY_URL}`) && ( PathPrefix(`/estimate`)
+      - "traefik.http.routers.vram.rule=(Host(`${PROXY_URL}`) && PathPrefix(`/estimate`))"
       - traefik.http.routers.vram.tls=true
       - traefik.http.routers.vram.tls.certresolver=letsencrypt
       - traefik.http.services.vram.loadbalancer.server.port=80
