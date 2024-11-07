@@ -1,5 +1,5 @@
 import math
-from pydantic import BaseModel, Enum
+from pydantic import BaseModel
 from fastapi import FastAPI
 from accelerate.commands import estimate
 
