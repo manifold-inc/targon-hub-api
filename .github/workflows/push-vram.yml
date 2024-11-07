@@ -6,8 +6,6 @@ on:
     branches:
       - "main"
     paths:
-      - "api/**"
-      - "miner-cache/**"
       - "vram-estimator/**"
 
 jobs:
@@ -31,24 +29,6 @@ jobs:
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
-
-      - name: Build and push targon hub api
-        uses: docker/build-push-action@v6
-        with:
-          context: api
-          push: true
-          tags: |
-            manifoldlabs/targon-hub-api:latest
-            manifoldlabs/targon-hub-api:${{ steps.vars.outputs.sha_short }}
-            
-      - name: Build and push targon hub miner cache
-        uses: docker/build-push-action@v6
-        with:
-          context: miner-cache
-          push: true
-          tags: |
-            manifoldlabs/targon-hub-miner-cache:latest
-            manifoldlabs/targon-hub-miner-cache:${{ steps.vars.outputs.sha_short }}
 
       - name: Build and push targon hub vram estimator
         uses: docker/build-push-action@v6
