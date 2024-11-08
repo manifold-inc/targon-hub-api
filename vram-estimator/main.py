@@ -39,9 +39,9 @@ class Request(BaseModel):
 async def post_estimate(req: Request):
     required = estimate_max_size(req.model, req.library_name)
     print(f"{req.model}: {required}")
-    return {"required_gpus", required}, 200
+    return {"required_gpus", required}
 
 
 @app.get("/")
 def ping():
-    return "", 200
+    return ""
