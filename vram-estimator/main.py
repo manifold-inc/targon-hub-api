@@ -29,7 +29,6 @@ def estimate_max_size(model_name, lib):
 app = FastAPI()
 
 
-
 class Request(BaseModel):
     model: str
     library_name: str
@@ -39,7 +38,7 @@ class Request(BaseModel):
 async def post_estimate(req: Request):
     required = estimate_max_size(req.model, req.library_name)
     print(f"{req.model}: {required}")
-    return {"required_gpus", required}
+    return {"required_gpus": required}
 
 
 @app.get("/")
