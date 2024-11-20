@@ -7,6 +7,7 @@ require (
 	github.com/aidarkhanov/nanoid v1.0.8
 	github.com/go-sql-driver/mysql v1.8.1
 	github.com/google/uuid v1.6.0
+	github.com/labstack/echo v3.3.10+incompatible
 	github.com/labstack/echo/v4 v4.11.4
 	github.com/nitishm/go-rejson/v4 v4.2.0
 	github.com/redis/go-redis/v9 v9.5.1
@@ -16,6 +17,7 @@ require (
 	filippo.io/edwards25519 v1.1.0 // indirect
 	github.com/cespare/xxhash/v2 v2.2.0 // indirect
 	github.com/cosmos/go-bip39 v0.0.0-20180819234021-555e2067c45d // indirect
+	github.com/dgrijalva/jwt-go v3.2.0+incompatible // indirect
 	github.com/dgryski/go-rendezvous v0.0.0-20200823014737-9f7001d12a5f // indirect
 	github.com/gtank/merlin v0.1.1-0.20191105220539-8318aed1a79f // indirect
 	github.com/gtank/ristretto255 v0.1.2 // indirect

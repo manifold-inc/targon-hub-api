@@ -17,6 +17,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -29,6 +30,7 @@ import (
 func preprocessOpenaiRequest(c *Context, db *sql.DB) (*RequestInfo, error) {
 	c.Request().Header.Add("Content-Type", "application/json")
 	bearer := c.Request().Header.Get("Authorization")
+	miner := c.Request().Header.Get("X-Targon-Miner-Uid")
 	c.Response().Header().Set("Content-Type", "text/event-stream; charset=utf-8")
 	c.Response().Header().Set("Cache-Control", "no-cache")
 	c.Response().Header().Set("Connection", "keep-alive")
@@ -78,13 +80,18 @@ func preprocessOpenaiRequest(c *Context, db *sql.DB) (*RequestInfo, error) {
 	}
 
 	body, err = json.Marshal(payload)
-	fmt.Println(string(body))
 	if err != nil {
 		c.Err.Println(err)
 		sendErrorToEndon(err, "/v1/chat/completions")
 		return nil, &RequestError{500, errors.New("Internal Server Error")}
 	}
-	return &RequestInfo{Body: body, UserId: userid, StartingCredits: credits}, nil
+
+	res := &RequestInfo{Body: body, UserId: userid, StartingCredits: credits}
+	miner_uid, err := strconv.Atoi(miner)
+	if err == nil {
+		res.Miner = &miner_uid
+	}
+	return res, nil
 }
 
 func safeEnv(env string) string {
@@ -157,7 +164,7 @@ func getMinersForModel(c *Context, model string) []Miner {
 	return miners
 }
 
-func queryMiners(c *Context, req []byte, method string) (ResponseInfo, error) {
+func queryMiners(c *Context, req []byte, method string, miner_uid *int) (ResponseInfo, error) {
 	// Query miners with llm request
 	var requestBody RequestBody
 	err := json.Unmarshal(req, &requestBody)
@@ -171,7 +178,25 @@ func queryMiners(c *Context, req []byte, method string) (ResponseInfo, error) {
 	if miners == nil || len(miners) == 0 {
 		return ResponseInfo{}, errors.New("No Miners")
 	}
+
+	// Call specific miner if passed
 	miner := miners[0]
+	if miner_uid != nil {
+		c.Info.Printf("Attempting to find miner %d", *miner_uid)
+		found := false
+		for i := range miners {
+			m := miners[i]
+			if m.Uid == *miner_uid {
+				miner = m
+				found = true
+				break
+			}
+		}
+		if !found {
+			return ResponseInfo{}, errors.New("No Miners")
+		}
+		c.Info.Printf("Requesting Specific miner uid %d", miner.Uid)
+	}
 
 	// Build the rest of the body hash
 	tr := &http.Transport{
@@ -215,6 +240,11 @@ func queryMiners(c *Context, req []byte, method string) (ResponseInfo, error) {
 	timer := time.AfterFunc(4*time.Second, func() {
 		cancel()
 	})
+
+	c.Info.Printf("%+v\n", headers)
+	c.Info.Printf("%+v\n", string(req))
+	c.Info.Printf("%+v\n", message)
+
 	r, err := http.NewRequest("POST", endpoint, bytes.NewBuffer(req))
 	if err != nil {
 		c.Warn.Printf("Failed miner request: %s\n", err.Error())

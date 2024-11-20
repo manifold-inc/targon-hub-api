@@ -10,6 +10,7 @@ import (
 	"github.com/aidarkhanov/nanoid"
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/google/uuid"
+	"github.com/labstack/echo/middleware"
 	"github.com/labstack/echo/v4"
 	"github.com/redis/go-redis/v9"
 )
@@ -59,6 +60,7 @@ func main() {
 	}
 
 	e := echo.New()
+	e.Use(middleware.CORS())
 	e.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
 			reqId, _ := nanoid.Generate("0123456789abcdefghijklmnopqrstuvwxyz", 12)
@@ -95,7 +97,7 @@ func main() {
 		}
 		request.Endpoint = "CHAT"
 		cc.Info.Println(string(request.Body))
-		res, err := queryMiners(cc, request.Body, "/v1/chat/completions")
+		res, err := queryMiners(cc, request.Body, "/v1/chat/completions", request.Miner)
 		go saveRequest(db, res, *request, cc.Err)
 
 		if err != nil {
@@ -121,7 +123,7 @@ func main() {
 			return cc.String(error.StatusCode, error.Err.Error())
 		}
 		request.Endpoint = "COMPLETION"
-		res, err := queryMiners(cc, request.Body, "/v1/completions")
+		res, err := queryMiners(cc, request.Body, "/v1/completions", request.Miner)
 
 		go saveRequest(db, res, *request, cc.Err)
 
