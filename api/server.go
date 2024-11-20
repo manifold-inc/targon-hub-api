@@ -10,7 +10,7 @@ import (
 	"github.com/aidarkhanov/nanoid"
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/google/uuid"
-	"github.com/labstack/echo/middleware"
+	"github.com/labstack/echo/v4/middleware"
 	"github.com/labstack/echo/v4"
 	"github.com/redis/go-redis/v9"
 )
