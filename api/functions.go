@@ -73,7 +73,7 @@ func preprocessOpenaiRequest(c *Context, db *sql.DB) (*RequestInfo, error) {
 		payload["temperature"] = 1
 	}
 	if _, ok := payload["max_tokens"]; !ok {
-		payload["max_tokens"] = 128
+		payload["max_tokens"] = 512
 	}
 	if logprobs, ok := payload["logprobs"]; !ok || !logprobs.(bool) {
 		payload["logprobs"] = true
