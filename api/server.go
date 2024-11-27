@@ -88,8 +88,8 @@ func main() {
 
 	e.POST("/v1/chat/completions", func(c echo.Context) error {
 		cc := c.(*Context)
-		cc.Info.Printf("/api/chat/completions\n")
 		request, err := preprocessOpenaiRequest(cc, db)
+		cc.Info.Printf("/api/chat/completions - %d\n", request.UserId)
 		if err != nil {
 			error := err.(*RequestError)
 			cc.Err.Println(err)
@@ -107,16 +107,16 @@ func main() {
 		}
 
 		if !res.Success {
-			cc.Warn.Printf("Miner: %s %s\nTimed out\n", res.Miner.Hotkey, res.Miner.Coldkey)
-			return c.String(500, fmt.Sprintf("Miner UID %d Timed out. Try Again.", res.Miner.Uid))
+			cc.Warn.Printf("Miner: %s %s\n Failed request\n", res.Miner.Hotkey, res.Miner.Coldkey, res.Miner.Uid)
+			return c.String(500, fmt.Sprintf("Miner UID %d Failed Request. Try Again.", res.Miner.Uid))
 		}
 
 		return c.String(200, "")
 	})
 	e.POST("/v1/completions", func(c echo.Context) error {
 		cc := c.(*Context)
-		cc.Info.Printf("/api/completions\n")
 		request, err := preprocessOpenaiRequest(cc, db)
+		cc.Info.Printf("/api/completions - %d\n", request.UserId)
 		if err != nil {
 			error := err.(*RequestError)
 			cc.Err.Println(err)
@@ -134,8 +134,8 @@ func main() {
 		}
 
 		if !res.Success {
-			cc.Warn.Printf("Miner: %s %s\nTimed out\n", res.Miner.Hotkey, res.Miner.Coldkey)
-			return c.String(500, fmt.Sprintf("Miner UID %d Timed out. Try Again.", res.Miner.Uid))
+			cc.Warn.Printf("Miner: %s %s\n Failed request\n", res.Miner.Hotkey, res.Miner.Coldkey, res.Miner.Uid)
+			return c.String(500, fmt.Sprintf("Miner UID %d Failed Request. Try Again.", res.Miner.Uid))
 		}
 
 		return c.String(200, "")

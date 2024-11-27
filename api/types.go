@@ -64,7 +64,7 @@ type Event struct {
 }
 
 type RequestInfo struct {
-	StartingCredits int
+	StartingCredits int64
 	UserId          int
 	Body            []byte
 	Endpoint        string

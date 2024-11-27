@@ -37,7 +37,7 @@ func preprocessOpenaiRequest(c *Context, db *sql.DB) (*RequestInfo, error) {
 	c.Response().Header().Set("X-Accel-Buffering", "no")
 
 	var (
-		credits int
+		credits int64
 		userid  int
 	)
 	err := db.QueryRow("SELECT user.credits, user.id FROM user INNER JOIN api_key ON user.id = api_key.user_id WHERE api_key.id = ?", strings.Split(bearer, " ")[1]).Scan(&credits, &userid)
@@ -46,12 +46,9 @@ func preprocessOpenaiRequest(c *Context, db *sql.DB) (*RequestInfo, error) {
 		return nil, &RequestError{401, errors.New("Unauthorized")}
 	}
 	if err != nil {
-		c.Err.Println(err)
+		c.Err.Println("Error fetching user data from api key: %v", err)
 		sendErrorToEndon(err, "/v1/chat/completions")
 		return nil, &RequestError{500, errors.New("Interal Server Error")}
-	}
-	if credits < 0 {
-		return nil, &RequestError{403, errors.New("Out of credits")}
 	}
 	var payload map[string]interface{}
 	body, err := io.ReadAll(c.Request().Body)
@@ -65,6 +62,7 @@ func preprocessOpenaiRequest(c *Context, db *sql.DB) (*RequestInfo, error) {
 	if stream, ok := payload["stream"]; !ok || !stream.(bool) {
 		return nil, &RequestError{400, errors.New("Targon currently only supports streaming requests")}
 	}
+
 	// Defaults
 	if _, ok := payload["seed"]; !ok {
 		payload["seed"] = rand.Intn(100000)
@@ -77,6 +75,10 @@ func preprocessOpenaiRequest(c *Context, db *sql.DB) (*RequestInfo, error) {
 	}
 	if logprobs, ok := payload["logprobs"]; !ok || !logprobs.(bool) {
 		payload["logprobs"] = true
+	}
+
+	if credits < int64(payload["max_tokens"].(float64)) {
+		return nil, &RequestError{403, errors.New("Out of credits")}
 	}
 
 	body, err = json.Marshal(payload)
@@ -241,10 +243,6 @@ func queryMiners(c *Context, req []byte, method string, miner_uid *int) (Respons
 		cancel()
 	})
 
-	c.Info.Printf("%+v\n", headers)
-	c.Info.Printf("%+v\n", string(req))
-	c.Info.Printf("%+v\n", message)
-
 	r, err := http.NewRequest("POST", endpoint, bytes.NewBuffer(req))
 	if err != nil {
 		c.Warn.Printf("Failed miner request: %s\n", err.Error())
@@ -332,12 +330,12 @@ func saveRequest(db *sql.DB, res ResponseInfo, req RequestInfo, logger *log.Logg
 		logger.Println(err)
 		return
 	}
+
 	_, err = db.Exec("UPDATE user SET credits=? WHERE id=?",
-		req.StartingCredits-(res.Tokens*cpt),
+		max(req.StartingCredits-int64(res.Tokens*cpt), 0),
 		req.UserId)
 	if err != nil {
-		logger.Println("Failed to update")
-		logger.Println(err)
+		logger.Printf("Failed to update credits: %d - %d\n%s\n", req.StartingCredits, res.Tokens*cpt, err)
 	}
 
 	responseJson, _ := json.Marshal(res.Responses)
