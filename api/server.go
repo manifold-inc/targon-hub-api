@@ -109,7 +109,6 @@ func main() {
 			return cc.String(error.StatusCode, error.Err.Error())
 		}
 		request.Endpoint = "CHAT"
-		cc.log.Error(string(request.Body))
 		res, err := queryMiners(cc, request.Body, "/v1/chat/completions", request.Miner)
 		go saveRequest(db, res, *request, cc.log)
 
