@@ -47,16 +47,14 @@ func preprocessOpenaiRequest(c *Context, db *sql.DB) (*RequestInfo, error) {
 		return nil, &RequestError{401, errors.New("Unauthorized")}
 	}
 	if err != nil {
-		c.log.Error("Error fetching user data from api key: %v", err)
-		sendErrorToEndon(err, "/v1/chat/completions")
+		c.log.Errorf("Error fetching user data from api key: %v", err)
 		return nil, &RequestError{500, errors.New("Interal Server Error")}
 	}
 	var payload map[string]interface{}
 	body, err := io.ReadAll(c.Request().Body)
 	err = json.Unmarshal(body, &payload)
 	if err != nil {
-		c.log.Error(err)
-		sendErrorToEndon(err, "/v1/chat/completions")
+		c.log.Error(err.Error())
 		return nil, &RequestError{500, errors.New("Internal Server Error")}
 	}
 
@@ -84,8 +82,7 @@ func preprocessOpenaiRequest(c *Context, db *sql.DB) (*RequestInfo, error) {
 
 	body, err = json.Marshal(payload)
 	if err != nil {
-		c.log.Error(err)
-		sendErrorToEndon(err, "/v1/chat/completions")
+		c.log.Error(err.Error())
 		return nil, &RequestError{500, errors.New("Internal Server Error")}
 	}
 
@@ -150,14 +147,14 @@ func getMinersForModel(c *Context, model string) []Miner {
 	rh.SetGoRedisClientWithContext(c.Request().Context(), client)
 	minerJSON, err := rh.JSONGet(model, ".")
 	if err != nil {
-		c.log.Error("Failed to JSONGet: %s\n", err.Error())
+		c.log.Errorf("Failed to JSONGet: %s\n", err.Error())
 		return nil
 	}
 
 	var miners []Miner
 	err = json.Unmarshal(minerJSON.([]byte), &miners)
 	if err != nil {
-		c.log.Error("Failed to JSON Unmarshal: %s\n", err.Error())
+		c.log.Errorf("Failed to JSON Unmarshal: %s\n", err.Error())
 		return nil
 	}
 	for i := range miners {
@@ -172,7 +169,7 @@ func queryMiners(c *Context, req []byte, method string, miner_uid *int) (Respons
 	var requestBody RequestBody
 	err := json.Unmarshal(req, &requestBody)
 	if err != nil {
-		c.log.Error("Error unmarshaling request body: %s\nBody: %s\n", err.Error(), string(req))
+		c.log.Errorf("Error unmarshaling request body: %s\nBody: %s\n", err.Error(), string(req))
 		return ResponseInfo{}, errors.New("Invalid Body")
 	}
 
@@ -185,7 +182,7 @@ func queryMiners(c *Context, req []byte, method string, miner_uid *int) (Respons
 	// Call specific miner if passed
 	miner := miners[0]
 	if miner_uid != nil {
-		c.log.Info("Attempting to find miner %d", *miner_uid)
+		c.log.Infof("Attempting to find miner %d", *miner_uid)
 		found := false
 		for i := range miners {
 			m := miners[i]
@@ -198,7 +195,7 @@ func queryMiners(c *Context, req []byte, method string, miner_uid *int) (Respons
 		if !found {
 			return ResponseInfo{}, errors.New("No Miners")
 		}
-		c.log.Info("Requesting Specific miner uid %d", miner.Uid)
+		c.log.Infof("Requesting Specific miner uid %d", miner.Uid)
 	}
 
 	// Build the rest of the body hash
@@ -246,7 +243,7 @@ func queryMiners(c *Context, req []byte, method string, miner_uid *int) (Respons
 
 	r, err := http.NewRequest("POST", endpoint, bytes.NewBuffer(req))
 	if err != nil {
-		c.log.Warn("Failed miner request: %s\n", err.Error())
+		c.log.Warnf("Failed miner request: %s\n", err.Error())
 		return ResponseInfo{Miner: miner, Tokens: tokens, Responses: nil, Success: false}, nil
 	}
 
@@ -260,7 +257,7 @@ func queryMiners(c *Context, req []byte, method string, miner_uid *int) (Respons
 	r = r.WithContext(ctx)
 	res, err := httpClient.Do(r)
 	if err != nil {
-		c.log.Warn("Miner: %s %s\nError: %s\n", miner.Hotkey, miner.Coldkey, err.Error())
+		c.log.Warnf("Miner: %s %s\nError: %s\n", miner.Hotkey, miner.Coldkey, err.Error())
 		if res != nil {
 			res.Body.Close()
 		}
@@ -269,11 +266,11 @@ func queryMiners(c *Context, req []byte, method string, miner_uid *int) (Respons
 	if res.StatusCode != http.StatusOK {
 		bdy, _ := io.ReadAll(res.Body)
 		res.Body.Close()
-		c.log.Warn("Miner: %s %s\nError: %s\n", miner.Hotkey, miner.Coldkey, string(bdy))
+		c.log.Warnf("Miner: %s %s\nError: %s\n", miner.Hotkey, miner.Coldkey, string(bdy))
 		return ResponseInfo{Miner: miner, Tokens: tokens, Responses: nil, Success: false}, nil
 	}
 
-	c.log.Info("Miner: %s %s\n", miner.Hotkey, miner.Coldkey)
+	c.log.Infof("Miner: %s %s\n", miner.Hotkey, miner.Coldkey)
 	reader := bufio.NewScanner(res.Body)
 	finished := false
 	var responses []map[string]interface{}
@@ -296,7 +293,7 @@ func queryMiners(c *Context, req []byte, method string, miner_uid *int) (Respons
 				var response map[string]interface{}
 				err := json.Unmarshal([]byte(token), &response)
 				if err != nil {
-					c.log.Error("Failed decoing token string: %s", err)
+					c.log.Errorf("Failed decoing token string: %s", err)
 					continue
 				}
 				responses = append(responses, response)
@@ -327,7 +324,7 @@ func saveRequest(db *sql.DB, res ResponseInfo, req RequestInfo, logger *zap.Suga
 	}
 	err := db.QueryRow("SELECT id, cpt FROM model WHERE name = ?", model.(string)).Scan(&model_id, &cpt)
 	if err != nil {
-		logger.Errorw("Failed to get model", "error", err)
+		logger.Errorw("Failed to get model", "error", err.Error())
 		return
 	}
 
@@ -335,7 +332,7 @@ func saveRequest(db *sql.DB, res ResponseInfo, req RequestInfo, logger *zap.Suga
 		max(req.StartingCredits-int64(res.Tokens*cpt), 0),
 		req.UserId)
 	if err != nil {
-		logger.Error("Failed to update credits: %d - %d\n%s\n", req.StartingCredits, res.Tokens*cpt, err)
+		logger.Errorf("Failed to update credits: %d - %d\n%s\n", req.StartingCredits, res.Tokens*cpt, err)
 	}
 
 	responseJson, _ := json.Marshal(res.Responses)
@@ -363,48 +360,9 @@ func saveRequest(db *sql.DB, res ResponseInfo, req RequestInfo, logger *zap.Suga
 	)
 
 	if err != nil {
-		logger.Errorw("Failed to update", "error", err)
+		logger.Errorw("Failed to update", "error", err.Error())
 		return
 	}
 	return
 }
 
-func sendErrorToEndon(err error, endpoint string) {
-	if DEBUG {
-		return
-	}
-	payload := ErrorReport{
-		Service:  "targon-hub-api",
-		Endpoint: endpoint,
-		Error:    err.Error(),
-	}
-
-	jsonData, jsonErr := json.Marshal(payload)
-	if jsonErr != nil {
-		log.Printf("Failed to marshal error payload: %v\n", jsonErr)
-		return
-	}
-
-	client := &http.Client{Timeout: 10 * time.Second}
-	req, reqErr := http.NewRequest(http.MethodPost, ENDON_URL, bytes.NewBuffer(jsonData))
-	if reqErr != nil {
-		log.Printf("Failed to create Endon request: %v\n", reqErr)
-		return
-	}
-
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, respErr := client.Do(req)
-	if respErr != nil {
-		log.Printf("Failed to send error to Endon: %v\n", respErr)
-		return
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode >= 400 {
-		log.Printf("Failed to report error to Endon. Status: %d\n", resp.StatusCode)
-		return
-	}
-
-	fmt.Printf("Successfully sent error to Endon: %s\n", endpoint)
-}

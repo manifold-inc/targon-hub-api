@@ -104,22 +104,21 @@ func main() {
 		request, err := preprocessOpenaiRequest(cc, db)
 		if err != nil {
 			error := err.(*RequestError)
-			cc.log.Error(err)
+			cc.log.Error(err.Error())
 			return cc.String(error.StatusCode, error.Err.Error())
 		}
-		cc.log.Info("/api/chat/completions - %d\n", request.UserId)
+		cc.log.Infof("/api/chat/completions - %d\n", request.UserId)
 		request.Endpoint = "CHAT"
 		res, err := queryMiners(cc, request.Body, "/v1/chat/completions", request.Miner)
 		go saveRequest(db, res, *request, cc.log)
 
 		if err != nil {
 			cc.log.Error(err.Error())
-			sendErrorToEndon(err, "/v1/chat/completions")
 			return c.String(500, err.Error())
 		}
 
 		if !res.Success {
-			cc.log.Warn("Miner: %s %s\n Failed request\n", res.Miner.Hotkey, res.Miner.Coldkey, res.Miner.Uid)
+			cc.log.Warnf("Miner: %s %s\n Failed request\n", res.Miner.Hotkey, res.Miner.Coldkey, res.Miner.Uid)
 			return c.String(500, fmt.Sprintf("Miner UID %d Failed Request. Try Again.", res.Miner.Uid))
 		}
 
@@ -131,10 +130,10 @@ func main() {
 		request, err := preprocessOpenaiRequest(cc, db)
 		if err != nil {
 			error := err.(*RequestError)
-			cc.log.Error(err)
+			cc.log.Error(err.Error())
 			return cc.String(error.StatusCode, error.Err.Error())
 		}
-		cc.log.Info("/api/completions - %d\n", request.UserId)
+		cc.log.Infof("/api/completions - %d\n", request.UserId)
 		request.Endpoint = "COMPLETION"
 		res, err := queryMiners(cc, request.Body, "/v1/completions", request.Miner)
 
@@ -142,12 +141,11 @@ func main() {
 
 		if err != nil {
 			cc.log.Error(err.Error())
-			sendErrorToEndon(err, "/v1/completions")
 			return c.String(500, err.Error())
 		}
 
 		if !res.Success {
-			cc.log.Warn("Miner: %s %s\n Failed request\n", res.Miner.Hotkey, res.Miner.Coldkey, res.Miner.Uid)
+			cc.log.Warnf("Miner: %s %s\n Failed request\n", res.Miner.Hotkey, res.Miner.Coldkey, res.Miner.Uid)
 			return c.String(500, fmt.Sprintf("Miner UID %d Failed Request. Try Again.", res.Miner.Uid))
 		}
 
