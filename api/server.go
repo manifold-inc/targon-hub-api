@@ -125,12 +125,6 @@ func main() {
 
 		return c.String(200, "")
 	})
-	e.GET("/ping", func(c echo.Context) error {
-		cc := c.(*Context)
-		defer cc.log.Sync()
-		panic("Panic!!!")
-		//return c.String(200, "pong")
-	})
 	e.POST("/v1/completions", func(c echo.Context) error {
 		cc := c.(*Context)
 		defer cc.log.Sync()
