@@ -3,16 +3,16 @@ package main
 import (
 	"database/sql"
 	"fmt"
-	"log"
 	"os"
 	"strconv"
 
 	"github.com/aidarkhanov/nanoid"
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/google/uuid"
-	"github.com/labstack/echo/v4/middleware"
 	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v4/middleware"
 	"github.com/redis/go-redis/v9"
+	"go.uber.org/zap"
 )
 
 var (
@@ -38,9 +38,7 @@ var White = "\033[97m"
 
 type Context struct {
 	echo.Context
-	Info  *log.Logger
-	Warn  *log.Logger
-	Err   *log.Logger
+	log   *zap.SugaredLogger
 	reqid string
 }
 
@@ -59,23 +57,37 @@ func main() {
 		DEBUG, _ = strconv.ParseBool(debug)
 	}
 
+	var err error
+	logger, err := zap.NewProduction()
+	if err != nil {
+		panic("Failed to get logger")
+	}
+	sugar := logger.Sugar()
+
 	e := echo.New()
 	e.Use(middleware.CORS())
 	e.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
 			reqId, _ := nanoid.Generate("0123456789abcdefghijklmnopqrstuvwxyz", 12)
-			InfoLog := log.New(os.Stdout, fmt.Sprintf("%sINFO [%s]: %s", Green, reqId, Reset), log.Ldate|log.Ltime|log.Lshortfile)
-			WarnLog := log.New(os.Stdout, fmt.Sprintf("%sWARNING [%s]: %s", Yellow, reqId, Reset), log.Ldate|log.Ltime|log.Lshortfile)
-			ErrLog := log.New(os.Stdout, fmt.Sprintf("%sERROR [%s]: %s", Red, reqId, Reset), log.Ldate|log.Ltime|log.Lshortfile)
-			cc := &Context{c, InfoLog, WarnLog, ErrLog, reqId}
+			logger := sugar.With(
+				"request_id", reqId,
+			)
+
+			cc := &Context{c, logger, reqId}
 			return next(cc)
 		}
 	})
-	var err error
+	e.Use(middleware.RecoverWithConfig(middleware.RecoverConfig{
+		StackSize: 1 << 10, // 1 KB
+		LogErrorFunc:  func(c echo.Context, err error, stack []byte) error {
+			sugar.Errorw("Api Panic", "error", err)
+			return c.String(500, "Internal Server Error")
+		},
+	}))
 	db, err := sql.Open("mysql", DSN)
 	err = db.Ping()
 	if err != nil {
-		log.Println(err.Error())
+		sugar.Error(err.Error())
 	}
 	defer db.Close()
 
@@ -88,53 +100,61 @@ func main() {
 
 	e.POST("/v1/chat/completions", func(c echo.Context) error {
 		cc := c.(*Context)
+		defer cc.log.Sync()
 		request, err := preprocessOpenaiRequest(cc, db)
-		cc.Info.Printf("/api/chat/completions - %d\n", request.UserId)
+		cc.log.Info("/api/chat/completions - %d\n", request.UserId)
 		if err != nil {
 			error := err.(*RequestError)
-			cc.Err.Println(err)
+			cc.log.Error(err)
 			return cc.String(error.StatusCode, error.Err.Error())
 		}
 		request.Endpoint = "CHAT"
-		cc.Info.Println(string(request.Body))
+		cc.log.Error(string(request.Body))
 		res, err := queryMiners(cc, request.Body, "/v1/chat/completions", request.Miner)
-		go saveRequest(db, res, *request, cc.Err)
+		go saveRequest(db, res, *request, cc.log)
 
 		if err != nil {
-			cc.Err.Println(err.Error())
+			cc.log.Error(err.Error())
 			sendErrorToEndon(err, "/v1/chat/completions")
 			return c.String(500, err.Error())
 		}
 
 		if !res.Success {
-			cc.Warn.Printf("Miner: %s %s\n Failed request\n", res.Miner.Hotkey, res.Miner.Coldkey, res.Miner.Uid)
+			cc.log.Warn("Miner: %s %s\n Failed request\n", res.Miner.Hotkey, res.Miner.Coldkey, res.Miner.Uid)
 			return c.String(500, fmt.Sprintf("Miner UID %d Failed Request. Try Again.", res.Miner.Uid))
 		}
 
 		return c.String(200, "")
 	})
+	e.GET("/ping", func(c echo.Context) error {
+		cc := c.(*Context)
+		defer cc.log.Sync()
+		panic("Panic!!!")
+		//return c.String(200, "pong")
+	})
 	e.POST("/v1/completions", func(c echo.Context) error {
 		cc := c.(*Context)
+		defer cc.log.Sync()
 		request, err := preprocessOpenaiRequest(cc, db)
-		cc.Info.Printf("/api/completions - %d\n", request.UserId)
+		cc.log.Info("/api/completions - %d\n", request.UserId)
 		if err != nil {
 			error := err.(*RequestError)
-			cc.Err.Println(err)
+			cc.log.Error(err)
 			return cc.String(error.StatusCode, error.Err.Error())
 		}
 		request.Endpoint = "COMPLETION"
 		res, err := queryMiners(cc, request.Body, "/v1/completions", request.Miner)
 
-		go saveRequest(db, res, *request, cc.Err)
+		go saveRequest(db, res, *request, cc.log)
 
 		if err != nil {
-			cc.Err.Println(err.Error())
+			cc.log.Error(err.Error())
 			sendErrorToEndon(err, "/v1/completions")
 			return c.String(500, err.Error())
 		}
 
 		if !res.Success {
-			cc.Warn.Printf("Miner: %s %s\n Failed request\n", res.Miner.Hotkey, res.Miner.Coldkey, res.Miner.Uid)
+			cc.log.Warn("Miner: %s %s\n Failed request\n", res.Miner.Hotkey, res.Miner.Coldkey, res.Miner.Uid)
 			return c.String(500, fmt.Sprintf("Miner UID %d Failed Request. Try Again.", res.Miner.Uid))
 		}
 
