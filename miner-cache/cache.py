@@ -17,7 +17,8 @@ import httpx
 
 async def sync_miners():
     metagraph = subtensor.metagraph(netuid=4)
-    indices = numpy.argsort(metagraph.incentive)[-200:]
+    non_zero = sum([1 for x in metagraph.incentive if x])
+    indices = numpy.argsort(metagraph.incentive)[-non_zero:]
 
     # Get the corresponding uids
     uids_with_highest_incentives: List[int] = metagraph.uids[indices].tolist()
@@ -26,7 +27,6 @@ async def sync_miners():
     axons: List[Tuple[bt.AxonInfo, int]] = [
         (metagraph.axons[uid], uid) for uid in uids_with_highest_incentives
     ]
-    ips = []
     miner_models = {}
     for axon, uid in axons:
         headers = generate_header(hotkey, b"", axon.hotkey)
