@@ -102,12 +102,12 @@ func main() {
 		cc := c.(*Context)
 		defer cc.log.Sync()
 		request, err := preprocessOpenaiRequest(cc, db)
-		cc.log.Info("/api/chat/completions - %d\n", request.UserId)
 		if err != nil {
 			error := err.(*RequestError)
 			cc.log.Error(err)
 			return cc.String(error.StatusCode, error.Err.Error())
 		}
+		cc.log.Info("/api/chat/completions - %d\n", request.UserId)
 		request.Endpoint = "CHAT"
 		res, err := queryMiners(cc, request.Body, "/v1/chat/completions", request.Miner)
 		go saveRequest(db, res, *request, cc.log)
@@ -135,12 +135,12 @@ func main() {
 		cc := c.(*Context)
 		defer cc.log.Sync()
 		request, err := preprocessOpenaiRequest(cc, db)
-		cc.log.Info("/api/completions - %d\n", request.UserId)
 		if err != nil {
 			error := err.(*RequestError)
 			cc.log.Error(err)
 			return cc.String(error.StatusCode, error.Err.Error())
 		}
+		cc.log.Info("/api/completions - %d\n", request.UserId)
 		request.Endpoint = "COMPLETION"
 		res, err := queryMiners(cc, request.Body, "/v1/completions", request.Miner)
 
