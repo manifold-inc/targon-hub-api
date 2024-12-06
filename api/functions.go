@@ -69,15 +69,15 @@ func preprocessOpenaiRequest(c *Context, db *sql.DB) (*RequestInfo, error) {
 	if _, ok := payload["temperature"]; !ok {
 		payload["temperature"] = 1
 	}
+
 	if _, ok := payload["max_tokens"]; !ok {
 		payload["max_tokens"] = 512
-	}
-	if logprobs, ok := payload["logprobs"]; !ok || !logprobs.(bool) {
-		payload["logprobs"] = true
+	} else if credits < int64(payload["max_tokens"].(float64)) {
+		return nil, &RequestError{403, errors.New("Out of credits")}
 	}
 
-	if credits < int64(payload["max_tokens"].(float64)) {
-		return nil, &RequestError{403, errors.New("Out of credits")}
+	if logprobs, ok := payload["logprobs"]; !ok || !logprobs.(bool) {
+		payload["logprobs"] = true
 	}
 
 	body, err = json.Marshal(payload)
@@ -365,4 +365,3 @@ func saveRequest(db *sql.DB, res ResponseInfo, req RequestInfo, logger *zap.Suga
 	}
 	return
 }
-
