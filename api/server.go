@@ -119,7 +119,7 @@ func main() {
 		}
 
 		if !res.Success {
-			cc.log.Warnf("Miner: %s %s\n Failed request\n", res.Miner.Hotkey, res.Miner.Coldkey, res.Miner.Uid)
+			cc.log.Warnf("Miner %d: %s %s\n Failed request\n", res.Miner.Uid, res.Miner.Hotkey, res.Miner.Coldkey)
 			return c.String(500, fmt.Sprintf("Miner UID %d Failed Request. Try Again.", res.Miner.Uid))
 		}
 
@@ -146,7 +146,7 @@ func main() {
 		}
 
 		if !res.Success {
-			cc.log.Warnf("Miner: %s %s\n Failed request\n", res.Miner.Hotkey, res.Miner.Coldkey, res.Miner.Uid)
+			cc.log.Warnf("Miner %d: %s %s\n Failed request\n", res.Miner.Uid, res.Miner.Hotkey, res.Miner.Coldkey)
 			return c.String(500, fmt.Sprintf("Miner UID %d Failed Request. Try Again.", res.Miner.Uid))
 		}
 
