@@ -293,7 +293,7 @@ func queryMiners(c *Context, req []byte, method string, miner_uid *int) (Respons
 				var response map[string]interface{}
 				err := json.Unmarshal([]byte(token), &response)
 				if err != nil {
-					c.log.Errorf("Failed decoing token string: %s", err)
+					c.log.Errorf("Failed decoing token string: %s - Token: %s", err.Error(), token)
 					continue
 				}
 				responses = append(responses, response)

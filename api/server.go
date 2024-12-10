@@ -114,7 +114,12 @@ func main() {
 		go saveRequest(db, res, *request, cc.log)
 
 		if err != nil {
-			cc.log.Error(err.Error())
+			if err.Error() == "Request Canceled" {
+				// Dont need this to be caught by our alert system.
+				cc.log.Warn(err.Error())
+			} else {
+				cc.log.Error(err.Error())
+			}
 			return c.String(500, err.Error())
 		}
 
@@ -141,7 +146,12 @@ func main() {
 		go saveRequest(db, res, *request, cc.log)
 
 		if err != nil {
-			cc.log.Error(err.Error())
+			if err.Error() == "Request Canceled" {
+				// Dont need this to be caught by our alert system.
+				cc.log.Warn(err.Error())
+			} else {
+				cc.log.Error(err.Error())
+			}
 			return c.String(500, err.Error())
 		}
 
