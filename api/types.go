@@ -4,8 +4,9 @@ import "fmt"
 
 type RequestError struct {
 	StatusCode int
-	Err error
+	Err        error
 }
+
 func (r *RequestError) Error() string {
 	return fmt.Sprintf("status %d: err %v", r.StatusCode, r.Err)
 }
@@ -56,13 +57,6 @@ type ChatMessage struct {
 	Name    string `json:"name,omitempty"`
 }
 
-type Event struct {
-	Event string                 `json:"event"`
-	Id    string                 `json:"id"`
-	Retry int                    `json:"retry"`
-	Data  map[string]interface{} `json:"data"`
-}
-
 type RequestInfo struct {
 	StartingCredits int64
 	UserId          int
@@ -72,15 +66,17 @@ type RequestInfo struct {
 }
 
 type ResponseInfo struct {
-	Miner     Miner
-	Tokens    int
-	Responses []map[string]interface{}
-	Success   bool
+	Miner            Miner
+	ResponseTokens   int
+	Responses        []map[string]interface{}
+	Success          bool
+	TotalTime        int64
+	TimeToFirstToken int64
 }
 
-type ErrorReport struct {
-	Service   string `json:"service"`
-	Endpoint  string `json:"endpoint"`
-	Error     string `json:"error"`
-	Traceback string `json:"traceback,omitempty"`
+type Endpoints struct {
+	CHAT       string
+	COMPLETION string
 }
+
+var ENDPOINTS = Endpoints{CHAT: "CHAT", COMPLETION: "COMPLETION"}

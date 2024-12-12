@@ -244,7 +244,7 @@ func queryMiners(c *Context, req []byte, method string, miner_uid *int) (Respons
 	r, err := http.NewRequest("POST", endpoint, bytes.NewBuffer(req))
 	if err != nil {
 		c.log.Warnf("Failed miner request: %s\n", err.Error())
-		return ResponseInfo{Miner: miner, Tokens: tokens, Responses: nil, Success: false}, nil
+		return ResponseInfo{Miner: miner, ResponseTokens: tokens, Responses: nil, Success: false}, nil
 	}
 
 	// Set headers
@@ -256,24 +256,26 @@ func queryMiners(c *Context, req []byte, method string, miner_uid *int) (Respons
 
 	r = r.WithContext(ctx)
 	res, err := httpClient.Do(r)
+	start := time.Now()
 	if err != nil {
 		c.log.Warnf("Miner: %s %s\nError: %s\n", miner.Hotkey, miner.Coldkey, err.Error())
 		if res != nil {
 			res.Body.Close()
 		}
-		return ResponseInfo{Miner: miner, Tokens: tokens, Responses: nil, Success: false}, nil
+		return ResponseInfo{Miner: miner, ResponseTokens: tokens, Responses: nil, Success: false}, nil
 	}
 	if res.StatusCode != http.StatusOK {
 		bdy, _ := io.ReadAll(res.Body)
 		res.Body.Close()
 		c.log.Warnf("Miner: %s %s\nError: %s\n", miner.Hotkey, miner.Coldkey, string(bdy))
-		return ResponseInfo{Miner: miner, Tokens: tokens, Responses: nil, Success: false}, nil
+		return ResponseInfo{Miner: miner, ResponseTokens: tokens, Responses: nil, Success: false}, nil
 	}
 
 	c.log.Infof("Miner: %s %s\n", miner.Hotkey, miner.Coldkey)
 	reader := bufio.NewScanner(res.Body)
 	finished := false
 	var responses []map[string]interface{}
+	var timeToFirstToken int64
 	for reader.Scan() {
 		select {
 		case <-c.Request().Context().Done():
@@ -289,6 +291,9 @@ func queryMiners(c *Context, req []byte, method string, miner_uid *int) (Respons
 			}
 			token, found := strings.CutPrefix(token, "data: ")
 			if found {
+				if tokens == 0 {
+					timeToFirstToken = int64(time.Since(start) / time.Millisecond)
+				}
 				tokens += 1
 				var response map[string]interface{}
 				err := json.Unmarshal([]byte(token), &response)
@@ -302,15 +307,21 @@ func queryMiners(c *Context, req []byte, method string, miner_uid *int) (Respons
 	}
 	res.Body.Close()
 	if finished == false {
-		return ResponseInfo{Miner: miner, Tokens: tokens, Responses: responses, Success: false}, nil
+		return ResponseInfo{Miner: miner, ResponseTokens: tokens, Responses: responses, Success: false}, nil
 	}
-	return ResponseInfo{Miner: miner, Tokens: tokens, Responses: responses, Success: true}, nil
+	totalTime := int64(time.Since(start) / time.Millisecond)
+	c.log.Infof("Finished Request in %dms", totalTime)
+	return ResponseInfo{
+		Miner:            miner,
+		ResponseTokens:   tokens,
+		Responses:        responses,
+		Success:          true,
+		TotalTime:        totalTime,
+		TimeToFirstToken: timeToFirstToken,
+	}, nil
 }
 
 func saveRequest(db *sql.DB, res ResponseInfo, req RequestInfo, logger *zap.SugaredLogger) {
-	if DEBUG {
-		return
-	}
 	var (
 		model_id int
 		cpt      int
@@ -328,11 +339,13 @@ func saveRequest(db *sql.DB, res ResponseInfo, req RequestInfo, logger *zap.Suga
 		return
 	}
 
+	// Update credits
+	usedCredits := res.ResponseTokens * cpt
 	_, err = db.Exec("UPDATE user SET credits=? WHERE id=?",
-		max(req.StartingCredits-int64(res.Tokens*cpt), 0),
+		max(req.StartingCredits-int64(usedCredits), 0),
 		req.UserId)
 	if err != nil {
-		logger.Errorf("Failed to update credits: %d - %d\n%s\n", req.StartingCredits, res.Tokens*cpt, err)
+		logger.Errorf("Failed to update credits: %d - %d\n%s\n", req.StartingCredits, usedCredits, err)
 	}
 
 	responseJson, _ := json.Marshal(res.Responses)
@@ -340,12 +353,11 @@ func saveRequest(db *sql.DB, res ResponseInfo, req RequestInfo, logger *zap.Suga
 	pubId = "req_" + pubId
 	_, err = db.Exec(`
 	INSERT INTO 
-		request (pub_id, user_id, credits_used, tokens, request, response, model_id, uid, hotkey, coldkey, miner_address, endpoint, success) 
-		VALUES	(?,      ?,       ?,            ?,      ?,       ?,        ?,        ?,   ?,      ?,       ?,             ?,        ?)`,
+		request (pub_id, user_id, credits_used, request, response, model_id, uid, hotkey, coldkey, miner_address, endpoint, success, time_to_first_token, total_time, tokens)
+		VALUES	(?,      ?,       ?,            ?,       ?,        ?,        ?,   ?,      ?,       ?,             ?,        ?,       ?,                   ?,          ?)`,
 		pubId,
 		req.UserId,
-		res.Tokens*cpt,
-		res.Tokens,
+		usedCredits,
 		string(req.Body),
 		string(responseJson),
 		model_id,
@@ -357,6 +369,9 @@ func saveRequest(db *sql.DB, res ResponseInfo, req RequestInfo, logger *zap.Suga
 			res.Miner.Port),
 		req.Endpoint,
 		res.Success,
+		res.TimeToFirstToken,
+		res.TotalTime,
+		res.ResponseTokens,
 	)
 
 	if err != nil {

@@ -25,8 +25,8 @@ push: build
   @printf " {{GREEN}}{{CHECK}} Images Pushed {{CHECK}} {{RESET}}"
 
 prod image version='latest':
-  export version={{version}} && docker compose pull
-  export version={{version}} && docker rollout {{image}}
+  export VERSION={{version}} && docker compose pull
+  export VERSION={{version}} && docker rollout {{image}}
   @printf " {{GREEN}}{{CHECK}} Images Started {{CHECK}} {{RESET}}"
 
 down:

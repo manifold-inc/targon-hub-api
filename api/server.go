@@ -20,7 +20,6 @@ var (
 	PUBLIC_KEY    string
 	PRIVATE_KEY   string
 	INSTANCE_UUID string
-	ENDON_URL     string
 	DEBUG         bool
 
 	client *redis.Client
@@ -47,7 +46,6 @@ func main() {
 	PUBLIC_KEY = safeEnv("PUBLIC_KEY")
 	PRIVATE_KEY = safeEnv("PRIVATE_KEY")
 	DSN := safeEnv("DSN")
-	ENDON_URL = safeEnv("ENDON_URL")
 	INSTANCE_UUID = uuid.New().String()
 	debug, present := os.LookupEnv("DEBUG")
 
@@ -109,7 +107,7 @@ func main() {
 			return cc.String(error.StatusCode, error.Err.Error())
 		}
 		cc.log.Infof("/api/chat/completions - %d\n", request.UserId)
-		request.Endpoint = "CHAT"
+		request.Endpoint = ENDPOINTS.CHAT
 		res, err := queryMiners(cc, request.Body, "/v1/chat/completions", request.Miner)
 		go saveRequest(db, res, *request, cc.log)
 
@@ -140,7 +138,7 @@ func main() {
 			return cc.String(error.StatusCode, error.Err.Error())
 		}
 		cc.log.Infof("/api/completions - %d\n", request.UserId)
-		request.Endpoint = "COMPLETION"
+		request.Endpoint = ENDPOINTS.COMPLETION
 		res, err := queryMiners(cc, request.Body, "/v1/completions", request.Miner)
 
 		go saveRequest(db, res, *request, cc.log)
