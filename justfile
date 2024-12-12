@@ -29,5 +29,11 @@ prod image version='latest':
   export VERSION={{version}} && docker rollout {{image}}
   @printf " {{GREEN}}{{CHECK}} Images Started {{CHECK}} {{RESET}}"
 
+rollback image:
+  export VERSION=$(docker image ls --filter before=manifoldlabs/targon-hub-{{image}}:latest --filter reference=manifoldlabs/targon-hub-{{image}} --format "{{{{.Tag}}" | head -n 1) && docker rollout {{image}}
+
+history image:
+  docker image ls --filter before=manifoldlabs/targon-hub-{{image}}:latest --filter reference=manifoldlabs/targon-hub-{{image}}
+
 down:
   @docker compose down
