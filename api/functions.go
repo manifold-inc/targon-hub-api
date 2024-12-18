@@ -341,12 +341,12 @@ func saveRequest(db *sql.DB, res ResponseInfo, req RequestInfo, logger *zap.Suga
 
 	// Update credits
 	usedCredits := res.ResponseTokens * cpt
-	_, err = db.Exec("UPDATE user SET credits=? WHERE id=?",
-		max(req.StartingCredits-int64(usedCredits), 0),
-		req.UserId)
-	if err != nil {
-		logger.Errorf("Failed to update credits: %d - %d\n%s\n", req.StartingCredits, usedCredits, err)
-	}
+	//_, err = db.Exec("UPDATE user SET credits=? WHERE id=?",
+	//	max(req.StartingCredits-int64(usedCredits), 0),
+	//	req.UserId)
+	//if err != nil {
+	//	logger.Errorf("Failed to update credits: %d - %d\n%s\n", req.StartingCredits, usedCredits, err)
+	//}
 
 	responseJson, _ := json.Marshal(res.Responses)
 	pubId, _ := nanoid.Generate("0123456789abcdefghijklmnopqrstuvwxyz", 28)
