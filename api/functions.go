@@ -353,8 +353,8 @@ func saveRequest(db *sql.DB, res ResponseInfo, req RequestInfo, logger *zap.Suga
 	pubId = "req_" + pubId
 	_, err = db.Exec(`
 	INSERT INTO 
-		request (pub_id, user_id, credits_used, request, response, model_id, uid, hotkey, coldkey, miner_address, endpoint, success, time_to_first_token, total_time)
-		VALUES	(?,      ?,       ?,            ?,       ?,        ?,        ?,   ?,      ?,       ?,             ?,        ?,       ?,                   ?)`,
+		request (pub_id, user_id, credits_used, request, response, model_id, uid, hotkey, coldkey, miner_address, endpoint, success, time_to_first_token, total_time, scored)
+		VALUES	(?,      ?,       ?,            ?,       ?,        ?,        ?,   ?,      ?,       ?,             ?,        ?,       ?,                   ?,          ?)`,
 		pubId,
 		req.UserId,
 		usedCredits,
@@ -371,6 +371,7 @@ func saveRequest(db *sql.DB, res ResponseInfo, req RequestInfo, logger *zap.Suga
 		res.Success,
 		res.TimeToFirstToken,
 		res.TotalTime,
+		req.Miner != nil,
 	)
 
 	if err != nil {
