@@ -34,7 +34,7 @@ class Request(BaseModel):
     library_name: str
 
 
-@app.post("/estimate")
+@app.post("/")
 async def post_estimate(req: Request):
     required = estimate_max_size(req.model, req.library_name)
     print(f"{req.model}: {required}")
