@@ -8,6 +8,14 @@ services:
       - traefik.http.routers.api.tls=false
       - traefik.http.routers.api.tls.certresolver=
       - traefik.http.services.api.loadbalancer.server.port=80
+  vram-estimator:
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.vram.rule=Host(`estimate.localhost`)
+      - traefik.http.routers.vram.tls=false
+      - traefik.http.services.vram.loadbalancer.server.port=80
+    ports:
+      - "8000:80"
   traefik:
     ports:
       - 80:80
@@ -16,8 +24,5 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - $PWD/traefik/traefik.dev.toml:/etc/traefik/traefik.toml
   vector:
-    profiles:
-      - "production"
-  vram-estimator:
     profiles:
       - "production"
