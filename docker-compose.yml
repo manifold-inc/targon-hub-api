@@ -12,19 +12,6 @@ services:
       platforms: 
       - linux/amd64
       - linux/arm64
-  vram-estimator-beta:
-    image: manifoldlabs/targon-hub-vram-estimator:${VERSION:-latest}
-    labels:
-      - traefik.enable=true
-      - traefik.http.routers.vram.rule=Host(`estimate.${PROXY_URL}`)
-      - traefik.http.routers.vram.tls=true
-      - traefik.http.routers.vram.tls.certresolver=letsencrypt
-      - traefik.http.services.vram.loadbalancer.server.port=80
-    build:
-      context: ./vram-estimator
-      platforms: 
-      - linux/amd64
-      - linux/arm64
   api:
     image: manifoldlabs/targon-hub-api:${VERSION:-latest}
     labels:
