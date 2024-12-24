@@ -12,7 +12,6 @@ services:
       platforms: 
       - linux/amd64
       - linux/arm64
-
   api:
     image: manifoldlabs/targon-hub-api:${VERSION:-latest}
     labels:
