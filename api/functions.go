@@ -147,7 +147,7 @@ func getMinersForModel(c *Context, model string) []Miner {
 	rh.SetGoRedisClientWithContext(c.Request().Context(), client)
 	minerJSON, err := rh.JSONGet(model, ".")
 	if err != nil {
-		c.log.Errorf("Failed to JSONGet: %s\n", err.Error())
+		c.log.Errorw("Failed to get model from redis: "+model, "error", err.Error())
 		return nil
 	}
 
@@ -335,7 +335,7 @@ func saveRequest(db *sql.DB, res ResponseInfo, req RequestInfo, logger *zap.Suga
 	}
 	err := db.QueryRow("SELECT id, cpt FROM model WHERE name = ?", model.(string)).Scan(&model_id, &cpt)
 	if err != nil {
-		logger.Errorw("Failed to get model", "error", err.Error())
+		logger.Warnw("Failed to get model "+model.(string), "error", err.Error())
 		return
 	}
 
