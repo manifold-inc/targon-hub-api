@@ -65,7 +65,7 @@ type RequestInfo struct {
 	Miner           *int
 }
 
-type ResponseInfo struct {
+type ResponseLLMInfo struct {
 	Miner            Miner
 	ResponseTokens   int
 	Responses        []map[string]interface{}
@@ -74,10 +74,17 @@ type ResponseInfo struct {
 	TimeToFirstToken int64
 }
 
+type ResponseImageInfo struct {
+	Miner            Miner
+	Responses        string
+	Success          bool
+	TotalTime        int64
+}
+
 type Endpoints struct {
 	CHAT       string
 	COMPLETION string
-	IMAGES     string
+	IMAGE      string
 }
 
 var ENDPOINTS = Endpoints{CHAT: "CHAT", COMPLETION: "COMPLETION", IMAGE: "IMAGE"}

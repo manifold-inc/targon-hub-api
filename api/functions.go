@@ -28,15 +28,18 @@ import (
 	"go.uber.org/zap"
 )
 
-func preprocessOpenaiRequest(c *Context, db *sql.DB) (*RequestInfo, error) {
+func preprocessOpenaiRequest(c *Context, db *sql.DB, endpoint *Endpoints) (*RequestInfo, error) {
 	c.Request().Header.Add("Content-Type", "application/json")
 	bearer := c.Request().Header.Get("Authorization")
 	miner := c.Request().Header.Get("X-Targon-Miner-Uid")
-	// Conditional Header for Image
-	c.Response().Header().Set("Content-Type", "text/event-stream; charset=utf-8")
 	c.Response().Header().Set("Cache-Control", "no-cache")
 	c.Response().Header().Set("Connection", "keep-alive")
 	c.Response().Header().Set("X-Accel-Buffering", "no")
+
+	// Conditional Header for LLM
+	if endpoint == ENDPOINTS.CHAT || endpoint == ENDPOINTS.COMPLETION {
+		c.Response().Header().Set("Content-Type", "text/event-stream; charset=utf-8")
+	}
 
 	var (
 		credits int64
@@ -59,28 +62,45 @@ func preprocessOpenaiRequest(c *Context, db *sql.DB) (*RequestInfo, error) {
 		return nil, &RequestError{500, errors.New("Internal Server Error")}
 	}
 
-	// Conditional Check for Nonimage
-	if stream, ok := payload["stream"]; !ok || !stream.(bool) {
-		return nil, &RequestError{400, errors.New("Targon currently only supports streaming requests")}
+	// Conditional Check for LLM
+	if endpoint == ENDPOINTS.CHAT || endpoint == ENDPOINTS.COMPLETION {
+		if stream, ok := payload["stream"]; !ok || !stream.(bool) {
+			return nil, &RequestError{400, errors.New("Targon currently only supports streaming requests")}
+		}
 	}
 
 	// Image Defaults - Width, Height, Prompt (NOT NULL)
-	// Defaults
-	if _, ok := payload["seed"]; !ok {
-		payload["seed"] = rand.Intn(100000)
-	}
-	if _, ok := payload["temperature"]; !ok {
-		payload["temperature"] = 1
-	}
-
-	if _, ok := payload["max_tokens"]; !ok {
-		payload["max_tokens"] = 512
-	} else if credits < int64(payload["max_tokens"].(float64)) {
-		return nil, &RequestError{403, errors.New("Out of credits")}
+	if endpoint == ENDPOINTS.IMAGE {
+		if _, ok := payload["width"]; !ok {
+			payload["width"] = 1024
+		}
+		if _, ok := payload["height"]; !ok {
+			payload["height"] = 1024
+		}
+		if _, ok := payload["prompt"]; !ok {
+			return nil, &RequestError{400, errors.New("Prompt is required")}
+		}
 	}
 
-	if logprobs, ok := payload["logprobs"]; !ok || !logprobs.(bool) {
-		payload["logprobs"] = true
+	// LLM Defaults
+	if endpoint == ENDPOINTS.CHAT || endpoint == ENDPOINTS.COMPLETION {
+		if _, ok := payload["seed"]; !ok {
+			payload["seed"] = rand.Intn(100000)
+		}
+		
+		if _, ok := payload["temperature"]; !ok {
+			payload["temperature"] = 1
+		}
+
+		if _, ok := payload["max_tokens"]; !ok {
+			payload["max_tokens"] = 512
+		} else if credits < int64(payload["max_tokens"].(float64)) {
+			return nil, &RequestError{403, errors.New("Out of credits")}
+		}
+
+		if logprobs, ok := payload["logprobs"]; !ok || !logprobs.(bool) {
+				payload["logprobs"] = true
+		}
 	}
 
 	body, err = json.Marshal(payload)

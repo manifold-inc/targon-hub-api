@@ -154,7 +154,7 @@ func main() {
 	e.POST("/v1/images/generations", func(c echo.Context) error {
 		cc := c.(*Context)
 		defer cc.log.Sync()
-		request, err := preprocessOpenaiRequest(cc, db)
+		request, err := preprocessOpenaiRequest(cc, db, ENDPOINTS.IMAGE)
 		
 		if err != nil {
 			error := err.(*RequestError)
