@@ -32,6 +32,7 @@ func preprocessOpenaiRequest(c *Context, db *sql.DB) (*RequestInfo, error) {
 	c.Request().Header.Add("Content-Type", "application/json")
 	bearer := c.Request().Header.Get("Authorization")
 	miner := c.Request().Header.Get("X-Targon-Miner-Uid")
+	// Conditional Header for Image
 	c.Response().Header().Set("Content-Type", "text/event-stream; charset=utf-8")
 	c.Response().Header().Set("Cache-Control", "no-cache")
 	c.Response().Header().Set("Connection", "keep-alive")
@@ -58,10 +59,12 @@ func preprocessOpenaiRequest(c *Context, db *sql.DB) (*RequestInfo, error) {
 		return nil, &RequestError{500, errors.New("Internal Server Error")}
 	}
 
+	// Conditional Check for Nonimage
 	if stream, ok := payload["stream"]; !ok || !stream.(bool) {
 		return nil, &RequestError{400, errors.New("Targon currently only supports streaming requests")}
 	}
 
+	// Image Defaults - Width, Height, Prompt (NOT NULL)
 	// Defaults
 	if _, ok := payload["seed"]; !ok {
 		payload["seed"] = rand.Intn(100000)
@@ -233,6 +236,7 @@ func queryMiners(c *Context, req []byte, method string, miner_uid *int) (Respons
 		"Epistula-Secret-Signature-2": signMessage([]byte(fmt.Sprintf("%d.%s", timestampInterval+1, miner.Hotkey)), PUBLIC_KEY, PRIVATE_KEY),
 		"X-Targon-Model":              requestBody.Model,
 		"Content-Type":                "application/json",
+		// Keep-Alive Header Conditionally Added for LLM Requests
 		"Connection":                  "keep-alive",
 	}
 
@@ -272,6 +276,7 @@ func queryMiners(c *Context, req []byte, method string, miner_uid *int) (Respons
 	}
 
 	c.log.Infof("Miner: %s %s\n", miner.Hotkey, miner.Coldkey)
+	// LLM Streaming need to do Image Nonstreaming
 	reader := bufio.NewScanner(res.Body)
 	finished := false
 	var responses []map[string]interface{}
@@ -313,14 +318,18 @@ func queryMiners(c *Context, req []byte, method string, miner_uid *int) (Respons
 	c.log.Infof("Finished Request in %dms", totalTime)
 	return ResponseInfo{
 		Miner:            miner,
+		// LLM Only
 		ResponseTokens:   tokens,
+		// Different Datatype for Image
 		Responses:        responses,
 		Success:          true,
 		TotalTime:        totalTime,
+		// LLM Only
 		TimeToFirstToken: timeToFirstToken,
 	}, nil
 }
 
+// Argument needs to accept image and LLM 
 func saveRequest(db *sql.DB, res ResponseInfo, req RequestInfo, logger *zap.SugaredLogger) {
 	var (
 		model_id int

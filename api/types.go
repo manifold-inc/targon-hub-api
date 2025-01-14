@@ -77,6 +77,7 @@ type ResponseInfo struct {
 type Endpoints struct {
 	CHAT       string
 	COMPLETION string
+	IMAGES     string
 }
 
-var ENDPOINTS = Endpoints{CHAT: "CHAT", COMPLETION: "COMPLETION"}
+var ENDPOINTS = Endpoints{CHAT: "CHAT", COMPLETION: "COMPLETION", IMAGE: "IMAGE"}
