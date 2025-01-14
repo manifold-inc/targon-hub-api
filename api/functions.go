@@ -28,7 +28,7 @@ import (
 	"go.uber.org/zap"
 )
 
-func preprocessOpenaiRequest(c *Context, db *sql.DB, endpoint *Endpoints) (*RequestInfo, error) {
+func preprocessOpenaiRequest(c *Context, db *sql.DB, endpoint Endpoints) (*RequestInfo, error) {
 	c.Request().Header.Add("Content-Type", "application/json")
 	bearer := c.Request().Header.Get("Authorization")
 	miner := c.Request().Header.Get("X-Targon-Miner-Uid")
@@ -65,6 +65,7 @@ func preprocessOpenaiRequest(c *Context, db *sql.DB, endpoint *Endpoints) (*Requ
 	// Conditional Check for LLM
 	if endpoint == ENDPOINTS.CHAT || endpoint == ENDPOINTS.COMPLETION {
 		if stream, ok := payload["stream"]; !ok || !stream.(bool) {
+			// Need to update error message
 			return nil, &RequestError{400, errors.New("Targon currently only supports streaming requests")}
 		}
 	}
@@ -87,7 +88,7 @@ func preprocessOpenaiRequest(c *Context, db *sql.DB, endpoint *Endpoints) (*Requ
 		if _, ok := payload["seed"]; !ok {
 			payload["seed"] = rand.Intn(100000)
 		}
-		
+
 		if _, ok := payload["temperature"]; !ok {
 			payload["temperature"] = 1
 		}
@@ -254,10 +255,13 @@ func queryMiners(c *Context, req []byte, method string, miner_uid *int) (Respons
 		"Epistula-Secret-Signature-0": signMessage([]byte(fmt.Sprintf("%d.%s", timestampInterval-1, miner.Hotkey)), PUBLIC_KEY, PRIVATE_KEY),
 		"Epistula-Secret-Signature-1": signMessage([]byte(fmt.Sprintf("%d.%s", timestampInterval, miner.Hotkey)), PUBLIC_KEY, PRIVATE_KEY),
 		"Epistula-Secret-Signature-2": signMessage([]byte(fmt.Sprintf("%d.%s", timestampInterval+1, miner.Hotkey)), PUBLIC_KEY, PRIVATE_KEY),
-		"X-Targon-Model":              requestBody.Model,
-		"Content-Type":                "application/json",
-		// Keep-Alive Header Conditionally Added for LLM Requests
-		"Connection":                  "keep-alive",
+		"X-Targon-Model":             requestBody.Model,
+		"Content-Type":               "application/json",
+	}
+
+	// Add Connection header for LLM requests
+	if method == "v1/completions" || method == "v1/chat/completions" {
+		headers["Connection"] = "keep-alive"
 	}
 
 	ctx, cancel := context.WithCancel(c.Request().Context())
@@ -296,58 +300,64 @@ func queryMiners(c *Context, req []byte, method string, miner_uid *int) (Respons
 	}
 
 	c.log.Infof("Miner: %s %s\n", miner.Hotkey, miner.Coldkey)
-	// LLM Streaming need to do Image Nonstreaming
-	reader := bufio.NewScanner(res.Body)
-	finished := false
-	var responses []map[string]interface{}
-	var timeToFirstToken int64
-	for reader.Scan() {
-		select {
-		case <-c.Request().Context().Done():
-			return ResponseInfo{}, errors.New("Request Canceled")
-		default:
-			timer.Reset(2 * time.Second)
-			token := reader.Text()
-			fmt.Fprintf(c.Response(), token+"\n\n")
-			c.Response().Flush()
-			if token == "data: [DONE]" {
-				finished = true
-				break
-			}
-			token, found := strings.CutPrefix(token, "data: ")
-			if found {
-				if tokens == 0 {
-					timeToFirstToken = int64(time.Since(start) / time.Millisecond)
+
+	// Streaming for LLM Requests
+	if method == "v1/completions" || method == "v1/chat/completions" {
+		reader := bufio.NewScanner(res.Body)
+		finished := false
+		var responses []map[string]interface{}
+		var timeToFirstToken int64
+		for reader.Scan() {
+			select {
+			case <-c.Request().Context().Done():
+				return ResponseInfo{}, errors.New("Request Canceled")
+			default:
+				timer.Reset(2 * time.Second)
+				token := reader.Text()
+				fmt.Fprintf(c.Response(), token+"\n\n")
+				c.Response().Flush()
+				if token == "data: [DONE]" {
+					finished = true
+					break
 				}
-				tokens += 1
-				var response map[string]interface{}
-				err := json.Unmarshal([]byte(token), &response)
-				if err != nil {
-					c.log.Errorf("Failed decoing token string: %s - Token: %s", err.Error(), token)
-					continue
+				token, found := strings.CutPrefix(token, "data: ")
+				if found {
+					if tokens == 0 {
+						timeToFirstToken = int64(time.Since(start) / time.Millisecond)
+					}
+					tokens += 1
+					var response map[string]interface{}
+					err := json.Unmarshal([]byte(token), &response)
+					if err != nil {
+						c.log.Errorf("Failed decoing token string: %s - Token: %s", err.Error(), token)
+						continue
+					}
+					responses = append(responses, response)
 				}
-				responses = append(responses, response)
 			}
 		}
+		res.Body.Close()	
+		if finished == false {
+			return ResponseLLMInfo{Miner: miner, ResponseTokens: tokens, Responses: responses, Success: false}, nil
+		}
 	}
-	res.Body.Close()
-	if finished == false {
-		return ResponseInfo{Miner: miner, ResponseTokens: tokens, Responses: responses, Success: false}, nil
-	}
+
 	totalTime := int64(time.Since(start) / time.Millisecond)
 	c.log.Infof("Finished Request in %dms", totalTime)
-	return ResponseInfo{
-		Miner:            miner,
-		// LLM Only
-		ResponseTokens:   tokens,
-		// Different Datatype for Image
-		Responses:        responses,
-		Success:          true,
-		TotalTime:        totalTime,
-		// LLM Only
-		TimeToFirstToken: timeToFirstToken,
-	}, nil
-}
+
+	if method == "v1/images/generations" {
+		return ResponseImageInfo{Miner: miner, Responses: responses, Success: true, TotalTime: totalTime}, nil
+	} else {
+		return ResponseLLMInfo{
+			Miner:            miner,
+			ResponseTokens:   tokens,
+			Responses:        responses,
+			Success:          true,
+			TotalTime:        totalTime,
+			TimeToFirstToken: timeToFirstToken,
+			}, nil
+		}
+	}
 
 // Argument needs to accept image and LLM 
 func saveRequest(db *sql.DB, res ResponseInfo, req RequestInfo, logger *zap.SugaredLogger) {
