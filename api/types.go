@@ -65,20 +65,22 @@ type RequestInfo struct {
 	Miner           *int
 }
 
-type ResponseLLMInfo struct {
+// Organize Fields Dependent on Type of Response
+type ResponseInfo struct {
 	Miner            Miner
-	ResponseTokens   int
-	Responses        []map[string]interface{}
+	Data             Data
 	Success          bool
 	TotalTime        int64
+	Enum             string
+	// CHAT & COMPLETION ONLY
 	TimeToFirstToken int64
+	ResponseTokens   int
 }
 
-type ResponseImageInfo struct {
-	Miner            Miner
-	Responses        string
-	Success          bool
-	TotalTime        int64
+type Data struct {
+	Image       string
+	Chat        []map[string]interface{}
+	Completion  []map[string]interface{}
 }
 
 type Endpoints struct {

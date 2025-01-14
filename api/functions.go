@@ -194,13 +194,13 @@ func queryMiners(c *Context, req []byte, method string, miner_uid *int) (Respons
 	err := json.Unmarshal(req, &requestBody)
 	if err != nil {
 		c.log.Errorf("Error unmarshaling request body: %s\nBody: %s\n", err.Error(), string(req))
-		return ResponseInfo{}, errors.New("Invalid Body")
+		return ResponseInfo{Enum: ENDPOINTS.CHAT}, errors.New("Invalid Body")
 	}
 
 	// First we get our miners
 	miners := getMinersForModel(c, requestBody.Model)
 	if miners == nil || len(miners) == 0 {
-		return ResponseInfo{}, errors.New("No Miners")
+		return ResponseInfo{Enum: ENDPOINTS.CHAT}, errors.New("No Miners")
 	}
 
 	// Call specific miner if passed
@@ -272,7 +272,7 @@ func queryMiners(c *Context, req []byte, method string, miner_uid *int) (Respons
 	r, err := http.NewRequest("POST", endpoint, bytes.NewBuffer(req))
 	if err != nil {
 		c.log.Warnf("Failed miner request: %s\n", err.Error())
-		return ResponseInfo{Miner: miner, ResponseTokens: tokens, Responses: nil, Success: false}, nil
+		return ResponseInfo{Miner: miner, ResponseTokens: tokens, Responses: nil, Success: false, Enum: ENDPOINTS.CHAT}, nil
 	}
 
 	// Set headers
@@ -290,13 +290,13 @@ func queryMiners(c *Context, req []byte, method string, miner_uid *int) (Respons
 		if res != nil {
 			res.Body.Close()
 		}
-		return ResponseInfo{Miner: miner, ResponseTokens: tokens, Responses: nil, Success: false}, nil
+		return ResponseInfo{Miner: miner, ResponseTokens: tokens, Responses: nil, Success: false, Enum: ENDPOINTS.CHAT}, nil
 	}
 	if res.StatusCode != http.StatusOK {
 		bdy, _ := io.ReadAll(res.Body)
 		res.Body.Close()
 		c.log.Warnf("Miner: %s %s\nError: %s\n", miner.Hotkey, miner.Coldkey, string(bdy))
-		return ResponseInfo{Miner: miner, ResponseTokens: tokens, Responses: nil, Success: false}, nil
+		return ResponseInfo{Miner: miner, ResponseTokens: tokens, Responses: nil, Success: false, Enum: ENDPOINTS.CHAT}, nil
 	}
 
 	c.log.Infof("Miner: %s %s\n", miner.Hotkey, miner.Coldkey)
@@ -310,7 +310,7 @@ func queryMiners(c *Context, req []byte, method string, miner_uid *int) (Respons
 		for reader.Scan() {
 			select {
 			case <-c.Request().Context().Done():
-				return ResponseInfo{}, errors.New("Request Canceled")
+				return ResponseInfo{Enum: ENDPOINTS.CHAT}, errors.New("Request Canceled")
 			default:
 				timer.Reset(2 * time.Second)
 				token := reader.Text()
@@ -338,29 +338,46 @@ func queryMiners(c *Context, req []byte, method string, miner_uid *int) (Respons
 		}
 		res.Body.Close()	
 		if finished == false {
-			return ResponseLLMInfo{Miner: miner, ResponseTokens: tokens, Responses: responses, Success: false}, nil
+			return ResponseInfo{Miner: miner, ResponseTokens: tokens, Responses: responses, Success: false, Enum: ENDPOINTS.CHAT}, nil
 		}
 	}
-
+	
 	totalTime := int64(time.Since(start) / time.Millisecond)
 	c.log.Infof("Finished Request in %dms", totalTime)
 
 	if method == "v1/images/generations" {
-		return ResponseImageInfo{Miner: miner, Responses: responses, Success: true, TotalTime: totalTime}, nil
-	} else {
-		return ResponseLLMInfo{
-			Miner:            miner,
-			ResponseTokens:   tokens,
-			Responses:        responses,
-			Success:          true,
-			TotalTime:        totalTime,
+		return ResponseInfo{
+			Miner: miner,
+			Data: Data{Image: imageResponse},
+			Success: true,
+			TotalTime: totalTime,
+			Enum: ENDPOINTS.IMAGE,
+		}, nil
+	} else if method == "v1/chat/completions" {
+		return ResponseInfo{
+			Miner: miner,
+			Data: Data{Chat: responses},
+			Success: true,
+			TotalTime: totalTime,
 			TimeToFirstToken: timeToFirstToken,
-			}, nil
-		}
+			ResponseTokens: tokens,
+			Enum: ENDPOINTS.CHAT,
+		}, nil
+	} else { // completions
+		return ResponseInfo{
+			Miner: miner,
+			Data: Data{Completion: responses},
+			Success: true,
+			TotalTime: totalTime,
+			TimeToFirstToken: timeToFirstToken,
+			ResponseTokens: tokens,
+			Enum: ENDPOINTS.COMPLETION,
+		}, nil
 	}
+}
 
 // Argument needs to accept image and LLM 
-func saveRequest(db *sql.DB, res ResponseInfo, req RequestInfo, logger *zap.SugaredLogger) {
+func saveRequest(db *sql.DB, res ResponseInfo, req RequestInfo, logger *zap.SugaredLogger, endpoint Endpoints) {
 	var (
 		model_id int
 		cpt      int
