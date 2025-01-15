@@ -194,13 +194,13 @@ func queryMiners(c *Context, req []byte, method string, miner_uid *int) (Respons
 	err := json.Unmarshal(req, &requestBody)
 	if err != nil {
 		c.log.Errorf("Error unmarshaling request body: %s\nBody: %s\n", err.Error(), string(req))
-		return ResponseInfo{Enum: ENDPOINTS.CHAT}, errors.New("Invalid Body")
+		return ResponseInfo{}, errors.New("Invalid Body")
 	}
 
 	// First we get our miners
 	miners := getMinersForModel(c, requestBody.Model)
 	if miners == nil || len(miners) == 0 {
-		return ResponseInfo{Enum: ENDPOINTS.CHAT}, errors.New("No Miners")
+		return ResponseInfo{}, errors.New("No Miners")
 	}
 
 	// Call specific miner if passed
@@ -236,6 +236,12 @@ func queryMiners(c *Context, req []byte, method string, miner_uid *int) (Respons
 	// query each miner at the same time with the variable context of the
 	// parent function via go routines
 	tokens := 0
+	
+	// One response variable?
+	var imageResponse string
+	var llmResponse []map[string]interface{}
+	var timeToFirstToken int64
+
 	endpoint := "http://" + miner.Ip + ":" + fmt.Sprint(miner.Port) + method
 	timestamp := time.Now().UnixMilli()
 	id := uuid.New().String()
@@ -270,9 +276,10 @@ func queryMiners(c *Context, req []byte, method string, miner_uid *int) (Respons
 	})
 
 	r, err := http.NewRequest("POST", endpoint, bytes.NewBuffer(req))
+	// Enum: Chat vs Completion?
 	if err != nil {
 		c.log.Warnf("Failed miner request: %s\n", err.Error())
-		return ResponseInfo{Miner: miner, ResponseTokens: tokens, Responses: nil, Success: false, Enum: ENDPOINTS.CHAT}, nil
+		return ResponseInfo{Miner: miner, ResponseTokens: tokens, Responses: nil, Success: false}, nil
 	}
 
 	// Set headers
@@ -290,27 +297,25 @@ func queryMiners(c *Context, req []byte, method string, miner_uid *int) (Respons
 		if res != nil {
 			res.Body.Close()
 		}
-		return ResponseInfo{Miner: miner, ResponseTokens: tokens, Responses: nil, Success: false, Enum: ENDPOINTS.CHAT}, nil
+		return ResponseInfo{Miner: miner, ResponseTokens: tokens, Responses: nil, Success: false}, nil
 	}
 	if res.StatusCode != http.StatusOK {
 		bdy, _ := io.ReadAll(res.Body)
 		res.Body.Close()
 		c.log.Warnf("Miner: %s %s\nError: %s\n", miner.Hotkey, miner.Coldkey, string(bdy))
-		return ResponseInfo{Miner: miner, ResponseTokens: tokens, Responses: nil, Success: false, Enum: ENDPOINTS.CHAT}, nil
+		return ResponseInfo{Miner: miner, ResponseTokens: tokens, Responses: nil, Success: false}, nil
 	}
 
 	c.log.Infof("Miner: %s %s\n", miner.Hotkey, miner.Coldkey)
 
-	// Streaming for LLM Requests
+	// Grabbing LLM Response
 	if method == "v1/completions" || method == "v1/chat/completions" {
 		reader := bufio.NewScanner(res.Body)
 		finished := false
-		var responses []map[string]interface{}
-		var timeToFirstToken int64
 		for reader.Scan() {
 			select {
 			case <-c.Request().Context().Done():
-				return ResponseInfo{Enum: ENDPOINTS.CHAT}, errors.New("Request Canceled")
+				return ResponseInfo{}, errors.New("Request Canceled")
 			default:
 				timer.Reset(2 * time.Second)
 				token := reader.Text()
@@ -329,19 +334,34 @@ func queryMiners(c *Context, req []byte, method string, miner_uid *int) (Respons
 					var response map[string]interface{}
 					err := json.Unmarshal([]byte(token), &response)
 					if err != nil {
-						c.log.Errorf("Failed decoing token string: %s - Token: %s", err.Error(), token)
+						c.log.Errorf("Failed decoding token string: %s - Token: %s", err.Error(), token)
 						continue
 					}
-					responses = append(responses, response)
+					llmResponse = append(llmResponse, response)
 				}
 			}
 		}
 		res.Body.Close()	
 		if finished == false {
-			return ResponseInfo{Miner: miner, ResponseTokens: tokens, Responses: responses, Success: false, Enum: ENDPOINTS.CHAT}, nil
+			return ResponseInfo{Miner: miner, ResponseTokens: tokens,Data: Data{Chat: llmResponse}, Success: false, Enum: ENDPOINTS.CHAT}, nil
 		}
-	}
+	}  
 	
+	// Grabbing Image Response
+	if method == "v1/images/generations" {
+		var response string
+		// What is the response body format?
+		response, err := io.ReadAll(res.Body)
+		if err != nil {
+			c.log.Errorf("Failed to read image response: %s", err.Error())
+			return ResponseInfo{Miner: miner, Success: false, Enum: ENDPOINTS.IMAGE}, nil
+		}
+		
+		imageResponse = string(response)
+		// When to close the response body?
+		res.Body.Close()
+	}
+
 	totalTime := int64(time.Since(start) / time.Millisecond)
 	c.log.Infof("Finished Request in %dms", totalTime)
 
@@ -356,17 +376,17 @@ func queryMiners(c *Context, req []byte, method string, miner_uid *int) (Respons
 	} else if method == "v1/chat/completions" {
 		return ResponseInfo{
 			Miner: miner,
-			Data: Data{Chat: responses},
+			Data: Data{Chat: llmResponse},
 			Success: true,
 			TotalTime: totalTime,
 			TimeToFirstToken: timeToFirstToken,
 			ResponseTokens: tokens,
 			Enum: ENDPOINTS.CHAT,
 		}, nil
-	} else { // completions
+	} else { 
 		return ResponseInfo{
 			Miner: miner,
-			Data: Data{Completion: responses},
+			Data: Data{Completion: llmResponse},
 			Success: true,
 			TotalTime: totalTime,
 			TimeToFirstToken: timeToFirstToken,
