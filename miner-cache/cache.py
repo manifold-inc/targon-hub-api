@@ -100,7 +100,8 @@ if __name__ == "__main__":
         private_key=os.getenv("PRIVATE_KEY", ""),
     )
     subtensor = bt.subtensor("ws://subtensor.sybil.com:9944")
-    redis_host=os.getenv("REDIS_HOST", "")
-    r = Redis(host=redis_host, port=6379, decode_responses=True)
+    redis_host=os.getenv("REDIS_HOST", "cache")
+    redis_port=os.getenv("REDIS_PORT", 6379)
+    r = Redis(host=redis_host, port=redis_port, decode_responses=True)
     while True:
         asyncio.run(sync_miners())

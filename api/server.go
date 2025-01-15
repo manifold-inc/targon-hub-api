@@ -46,7 +46,8 @@ func main() {
 	PUBLIC_KEY = safeEnv("PUBLIC_KEY")
 	PRIVATE_KEY = safeEnv("PRIVATE_KEY")
 	DSN := safeEnv("DSN")
-	REDIS_HOST := safeEnv("REDIS_HOST")
+	REDIS_HOST := getEnv("REDIS_HOST", "cache")
+	REDIS_PORT := getEnv("REDIS_PORT", "6379")
 	INSTANCE_UUID = uuid.New().String()
 	debug, present := os.LookupEnv("DEBUG")
 
@@ -92,7 +93,7 @@ func main() {
 	defer db.Close()
 
 	client = redis.NewClient(&redis.Options{
-		Addr:     fmt.Sprintf("%s:6379", REDIS_HOST),
+		Addr:     fmt.Sprintf("%s:%s", REDIS_HOST, REDIS_PORT),
 		Password: "",
 		DB:       0,
 	})
