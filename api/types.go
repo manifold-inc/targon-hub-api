@@ -109,3 +109,4 @@ type Endpoints struct {
 }
 
 var ENDPOINTS = Endpoints{CHAT: "CHAT", COMPLETION: "COMPLETION", IMAGE: "IMAGE"}
+var METHODS = Endpoints{CHAT: "/v1/chat/completions", COMPLETION: "/v1/completions", IMAGE: "/v1/images/generations"}

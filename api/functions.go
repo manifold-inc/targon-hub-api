@@ -230,7 +230,6 @@ func queryMiners(c *Context, req []byte, method string, miner_uid *int) (Respons
 			Timeout: 2 * time.Second,
 		}).Dial,
 		TLSHandshakeTimeout:   2 * time.Second,
-		ResponseHeaderTimeout: 4 * time.Second,
 		DisableKeepAlives:     false,
 	}
 	httpClient := http.Client{Transport: tr, Timeout: 2 * time.Minute}
@@ -239,7 +238,6 @@ func queryMiners(c *Context, req []byte, method string, miner_uid *int) (Respons
 	// parent function via go routines
 	tokens := 0
 
-	// One response variable?
 	var imageResponse Image
 	var llmResponse []map[string]interface{}
 	var timeToFirstToken int64
@@ -269,7 +267,7 @@ func queryMiners(c *Context, req []byte, method string, miner_uid *int) (Respons
 	}
 
 	// Add Connection header for LLM requests
-	if method == "v1/completions" || method == "v1/chat/completions" {
+	if method == METHODS.COMPLETION || method == METHODS.CHAT {
 		headers["Connection"] = "keep-alive"
 	}
 
@@ -286,14 +284,15 @@ func queryMiners(c *Context, req []byte, method string, miner_uid *int) (Respons
 	r.Close = true
 	r.WithContext(c.Request().Context())
 
-	// TODO remove timer for images
 	ctx, cancel := context.WithCancel(c.Request().Context())
 	timer := time.AfterFunc(4*time.Second, func() {
 		cancel()
 	})
 
 	// wrap this line in conditional for chat or completion
-	r = r.WithContext(ctx)
+	if method == METHODS.CHAT || method == METHODS.COMPLETION {
+		r = r.WithContext(ctx)
+	}
 
 	res, err := httpClient.Do(r)
 	start := time.Now()
@@ -305,18 +304,18 @@ func queryMiners(c *Context, req []byte, method string, miner_uid *int) (Respons
 		return ResponseInfo{Miner: miner, Success: false}, nil
 	}
 	if res.StatusCode != http.StatusOK {
-		bdy, _ := io.ReadAll(res.Body)
+		body, _ := io.ReadAll(res.Body)
 		res.Body.Close()
-		c.log.Warnf("Miner: %s %s\nError: %s\n", miner.Hotkey, miner.Coldkey, string(bdy))
+		c.log.Warnf("Miner: %s %s\nError: %s\n", miner.Hotkey, miner.Coldkey, string(body))
 		return ResponseInfo{Miner: miner, Success: false}, nil
 	}
 
 	c.log.Infof("Miner: %s %s\n", miner.Hotkey, miner.Coldkey)
 
 	switch method {
-	case "v1/completions":
+	case METHODS.COMPLETION:
 		fallthrough
-	case "v1/chat/completions":
+	case METHODS.CHAT:
 		reader := bufio.NewScanner(res.Body)
 		finished := false
 		for reader.Scan() {
@@ -350,12 +349,12 @@ func queryMiners(c *Context, req []byte, method string, miner_uid *int) (Respons
 		}
 		res.Body.Close()
 		if finished == false {
-			if method == "v1/chat/completions" {
+			if method == METHODS.CHAT {
 				return ResponseInfo{Miner: miner, Data: Data{Chat: Chat{ResponseTokens: tokens, TimeToFirstToken: timeToFirstToken, Responses: llmResponse}}, Success: false, Type: ENDPOINTS.CHAT}, nil
 			}
 			return ResponseInfo{Miner: miner, Data: Data{Completion: Completion{ResponseTokens: tokens, TimeToFirstToken: timeToFirstToken, Responses: llmResponse}}, Success: false, Type: ENDPOINTS.COMPLETION}, nil
 		}
-	case "v1/images/generations":
+	case METHODS.IMAGE:
 		responseBytes, err := io.ReadAll(res.Body)
 		if err != nil {
 			c.log.Errorf("Failed to read image response: %s", err.Error())
@@ -373,7 +372,7 @@ func queryMiners(c *Context, req []byte, method string, miner_uid *int) (Respons
 	c.log.Infof("Finished Request in %dms", totalTime)
 
 	switch method {
-	case "v1/images/generations":
+	case METHODS.IMAGE:
 		return ResponseInfo{
 			Miner:     miner,
 			Success:   true,
@@ -382,7 +381,7 @@ func queryMiners(c *Context, req []byte, method string, miner_uid *int) (Respons
 			Type: ENDPOINTS.IMAGE,
 			Data: Data{Image: imageResponse},
 		}, nil
-	case "v1/chat/completions":
+	case METHODS.CHAT:
 		return ResponseInfo{
 			Miner:     miner,
 			Success:   true,
@@ -391,7 +390,7 @@ func queryMiners(c *Context, req []byte, method string, miner_uid *int) (Respons
 			Type: ENDPOINTS.CHAT,
 			Data: Data{Chat: Chat{Responses: llmResponse, ResponseTokens: tokens, TimeToFirstToken: timeToFirstToken}},
 		}, nil
-	case "v1/completions":
+	case METHODS.COMPLETION:
 		return ResponseInfo{
 			Miner:     miner,
 			Success:   true,
