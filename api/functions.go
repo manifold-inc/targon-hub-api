@@ -191,9 +191,6 @@ func getMinersForModel(c *Context, model string) []Miner {
 	return miners
 }
 
-// TODO
-// method should be the enum type and we should have another mapping constant
-// of enum -> endpoint
 func queryMiners(c *Context, req []byte, method string, miner_uid *int) (ResponseInfo, error) {
 	// Query miners with llm request
 	var requestBody RequestBody
@@ -272,7 +269,7 @@ func queryMiners(c *Context, req []byte, method string, miner_uid *int) (Respons
 	}
 
 	// Add Connection header for LLM requests
-	if method == METHODS.COMPLETION || method == METHODS.CHAT {
+	if method == ENDPOINTS.COMPLETION || method == ENDPOINTS.CHAT {
 		headers["Connection"] = "keep-alive"
 	}
 
@@ -295,7 +292,7 @@ func queryMiners(c *Context, req []byte, method string, miner_uid *int) (Respons
 	})
 
 	// wrap this line in conditional for chat or completion
-	if method == METHODS.CHAT || method == METHODS.COMPLETION {
+	if method == ENDPOINTS.CHAT || method == ENDPOINTS.COMPLETION {
 		r = r.WithContext(ctx)
 	}
 
@@ -318,9 +315,9 @@ func queryMiners(c *Context, req []byte, method string, miner_uid *int) (Respons
 	c.log.Infof("Miner: %s %s\n", miner.Hotkey, miner.Coldkey)
 
 	switch method {
-	case METHODS.COMPLETION:
+	case ENDPOINTS.COMPLETION:
 		fallthrough
-	case METHODS.CHAT:
+	case ENDPOINTS.CHAT:
 		reader := bufio.NewScanner(res.Body)
 		finished := false
 		for reader.Scan() {
@@ -354,12 +351,12 @@ func queryMiners(c *Context, req []byte, method string, miner_uid *int) (Respons
 		}
 		res.Body.Close()
 		if !finished {
-			if method == METHODS.CHAT {
+			if method == ENDPOINTS.CHAT {
 				return ResponseInfo{Miner: miner, Data: Data{Chat: Chat{ResponseTokens: tokens, TimeToFirstToken: timeToFirstToken, Responses: llmResponse}}, Success: false, Type: ENDPOINTS.CHAT}, nil
 			}
 			return ResponseInfo{Miner: miner, Data: Data{Completion: Completion{ResponseTokens: tokens, TimeToFirstToken: timeToFirstToken, Responses: llmResponse}}, Success: false, Type: ENDPOINTS.COMPLETION}, nil
 		}
-	case METHODS.IMAGE:
+	case ENDPOINTS.IMAGE:
 		responseBytes, err := io.ReadAll(res.Body)
 		if err != nil {
 			c.log.Errorf("Failed to read image response: %s", err.Error())
@@ -376,7 +373,7 @@ func queryMiners(c *Context, req []byte, method string, miner_uid *int) (Respons
 	c.log.Infof("Finished Request in %dms", totalTime)
 
 	switch method {
-	case METHODS.IMAGE:
+	case ENDPOINTS.IMAGE:
 		return ResponseInfo{
 			Miner:     miner,
 			Success:   true,
@@ -385,7 +382,7 @@ func queryMiners(c *Context, req []byte, method string, miner_uid *int) (Respons
 			Type: ENDPOINTS.IMAGE,
 			Data: Data{Image: imageResponse},
 		}, nil
-	case METHODS.CHAT:
+	case ENDPOINTS.CHAT:
 		return ResponseInfo{
 			Miner:     miner,
 			Success:   true,
@@ -394,7 +391,7 @@ func queryMiners(c *Context, req []byte, method string, miner_uid *int) (Respons
 			Type: ENDPOINTS.CHAT,
 			Data: Data{Chat: Chat{Responses: llmResponse, ResponseTokens: tokens, TimeToFirstToken: timeToFirstToken}},
 		}, nil
-	case METHODS.COMPLETION:
+	case ENDPOINTS.COMPLETION:
 		return ResponseInfo{
 			Miner:     miner,
 			Success:   true,

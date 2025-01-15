@@ -109,7 +109,7 @@ func main() {
 			return cc.String(error.StatusCode, error.Err.Error())
 		}
 		cc.log.Infof("/api/chat/completions - %d\n", request.UserId)
-		res, err := queryMiners(cc, request.Body, "/v1/chat/completions", request.Miner)
+		res, err := queryMiners(cc, request.Body, ENDPOINTS.CHAT, request.Miner)
 		go saveRequest(db, res, *request, cc.log)
 
 		if err != nil {
@@ -135,7 +135,7 @@ func main() {
 			return cc.String(error.StatusCode, error.Err.Error())
 		}
 		cc.log.Infof("/api/completions - %d\n", request.UserId)
-		res, err := queryMiners(cc, request.Body, "/v1/completions", request.Miner)
+		res, err := queryMiners(cc, request.Body, ENDPOINTS.COMPLETION, request.Miner)
 
 		go saveRequest(db, res, *request, cc.log)
 
@@ -164,7 +164,7 @@ func main() {
 		}
 
 		cc.log.Infof("/api/images/generations - %d\n", request.UserId)
-		res, err := queryMiners(cc, request.Body, "/v1/images/generations", request.Miner)
+		res, err := queryMiners(cc, request.Body, ENDPOINTS.IMAGE, request.Miner)
 
 		go saveRequest(db, res, *request, cc.log)
 
