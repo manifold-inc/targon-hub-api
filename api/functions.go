@@ -396,8 +396,7 @@ func queryMiners(c *Context, req []byte, method string, miner_uid *int) (Respons
 	}
 }
 
-// Argument needs to accept image and LLM 
-func saveRequest(db *sql.DB, res ResponseInfo, req RequestInfo, logger *zap.SugaredLogger, endpoint Endpoints) {
+func saveRequest(db *sql.DB, res ResponseInfo, req RequestInfo, logger *zap.SugaredLogger) {
 	var (
 		model_id int
 		cpt      int
@@ -429,8 +428,8 @@ func saveRequest(db *sql.DB, res ResponseInfo, req RequestInfo, logger *zap.Suga
 	pubId = "req_" + pubId
 	_, err = db.Exec(`
 	INSERT INTO 
-		request (pub_id, user_id, credits_used, request, response, model_id, uid, hotkey, coldkey, miner_address, endpoint, success, time_to_first_token, total_time, scored)
-		VALUES	(?,      ?,       ?,            ?,       ?,        ?,        ?,   ?,      ?,       ?,             ?,        ?,       ?,                   ?,          ?)`,
+		request (pub_id, user_id, credits_used, request, response, model_id, uid, hotkey, coldkey, miner_address, endpoint, success, time_to_first_token, total_time, scored, enum)
+		VALUES	(?,      ?,       ?,            ?,       ?,        ?,        ?,   ?,      ?,       ?,             ?,        ?,       ?,                  ?,          ?,      ?)`,
 		pubId,
 		req.UserId,
 		usedCredits,
@@ -448,6 +447,7 @@ func saveRequest(db *sql.DB, res ResponseInfo, req RequestInfo, logger *zap.Suga
 		res.TimeToFirstToken,
 		res.TotalTime,
 		req.Miner != nil,
+		res.Enum
 	)
 
 	if err != nil {

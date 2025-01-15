@@ -97,6 +97,7 @@ func main() {
 	})
 	defer client.Close()
 
+	// Update for new response structure
 	e.POST("/v1/chat/completions", func(c echo.Context) error {
 		cc := c.(*Context)
 		defer cc.log.Sync()
@@ -123,6 +124,8 @@ func main() {
 
 		return c.String(200, "")
 	})
+
+	// Update for new response structure
 	e.POST("/v1/completions", func(c echo.Context) error {
 		cc := c.(*Context)
 		defer cc.log.Sync()
@@ -179,7 +182,9 @@ func main() {
 		}
 
 		// Send the image response - OpenAI image object
-		return c.String(200, "")
+		return c.String(200, map[string]interface{}{
+			"b64_json": res.Data.Image,
+		})
 	})
 	e.Logger.Fatal(e.Start(":80"))
 }
