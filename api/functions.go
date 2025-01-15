@@ -292,7 +292,7 @@ func queryMiners(c *Context, req []byte, method string, miner_uid *int) (Respons
 	})
 
 	// wrap this line in conditional for chat or completion
-	if method == ENDPOINTS.CHAT || method == ENDPOINTS.COMPLETION {
+	if method == ENDPOINTS.COMPLETION || method == ENDPOINTS.CHAT {
 		r = r.WithContext(ctx)
 	}
 
