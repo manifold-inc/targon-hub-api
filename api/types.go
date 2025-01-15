@@ -67,20 +67,39 @@ type RequestInfo struct {
 
 // Organize Fields Dependent on Type of Response
 type ResponseInfo struct {
-	Miner            Miner
-	Data             Data
-	Success          bool
-	TotalTime        int64
-	Enum             string
-	// CHAT & COMPLETION ONLY
-	TimeToFirstToken int64
-	ResponseTokens   int
+	Miner     Miner
+	Success   bool
+	TotalTime int64
+
+	Type string
+	Data Data
 }
 
 type Data struct {
-	Image       string
-	Chat        []map[string]interface{}
-	Completion  []map[string]interface{}
+	Image      Image
+	Chat       Chat
+	Completion Completion
+}
+
+type Completion struct {
+	TimeToFirstToken int64
+	ResponseTokens   int
+	Responses        []map[string]interface{}
+}
+
+type Chat struct {
+	TimeToFirstToken int64
+	ResponseTokens   int
+	Responses        []map[string]interface{}
+}
+
+type Image struct {
+	Created float64     `json:"created"`
+	Data    []ImageData `json:"data"`
+}
+
+type ImageData struct {
+	B64_json string `json:"b64_json"`
 }
 
 type Endpoints struct {

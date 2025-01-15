@@ -233,14 +233,14 @@ func queryMiners(c *Context, req []byte, method string, miner_uid *int) (Respons
 		ResponseHeaderTimeout: 4 * time.Second,
 		DisableKeepAlives:     false,
 	}
-	httpClient := http.Client{Transport: tr, Timeout: 2 * time.Minute}
+	httpClient := http.Client{Transport: tr, Timeout: 10 * time.Second}
 
 	// query each miner at the same time with the variable context of the
 	// parent function via go routines
 	tokens := 0
 
 	// One response variable?
-	var imageResponse Image
+	var imageResponse string
 	var llmResponse []map[string]interface{}
 	var timeToFirstToken int64
 
@@ -273,6 +273,12 @@ func queryMiners(c *Context, req []byte, method string, miner_uid *int) (Respons
 		headers["Connection"] = "keep-alive"
 	}
 
+	// TODO remove timer for images
+	ctx, cancel := context.WithCancel(c.Request().Context())
+	timer := time.AfterFunc(4*time.Second, func() {
+		cancel()
+	})
+
 	r, err := http.NewRequest("POST", endpoint, bytes.NewBuffer(req))
 	if err != nil {
 		c.log.Warnf("Failed miner request: %s\n", err.Error())
@@ -286,15 +292,7 @@ func queryMiners(c *Context, req []byte, method string, miner_uid *int) (Respons
 	r.Close = true
 	r.WithContext(c.Request().Context())
 
-	// TODO remove timer for images
-	ctx, cancel := context.WithCancel(c.Request().Context())
-	timer := time.AfterFunc(4*time.Second, func() {
-		cancel()
-	})
-
-	// wrap this line in conditional for chat or completion
 	r = r.WithContext(ctx)
-
 	res, err := httpClient.Do(r)
 	start := time.Now()
 	if err != nil {
@@ -361,12 +359,10 @@ func queryMiners(c *Context, req []byte, method string, miner_uid *int) (Respons
 			c.log.Errorf("Failed to read image response: %s", err.Error())
 			return ResponseInfo{Miner: miner, Success: false, Type: ENDPOINTS.IMAGE}, nil
 		}
-
 		// When to close the response body?
-		json.Unmarshal(responseBytes, &imageResponse)
 		res.Body.Close()
 	default:
-		return ResponseInfo{}, errors.New("Unknown method")
+		//TODO panic
 	}
 
 	totalTime := int64(time.Since(start) / time.Millisecond)
@@ -379,29 +375,29 @@ func queryMiners(c *Context, req []byte, method string, miner_uid *int) (Respons
 			Success:   true,
 			TotalTime: totalTime,
 
-			Type: ENDPOINTS.IMAGE,
-			Data: Data{Image: imageResponse},
+			Data:      Data{Image: imageResponse},
+			Type:      ENDPOINTS.IMAGE,
 		}, nil
 	case "v1/chat/completions":
 		return ResponseInfo{
-			Miner:     miner,
-			Success:   true,
-			TotalTime: totalTime,
-
-			Type: ENDPOINTS.CHAT,
-			Data: Data{Chat: Chat{Responses: llmResponse, ResponseTokens: tokens, TimeToFirstToken: timeToFirstToken}},
+			Miner:            miner,
+			Data:             Data{Chat: llmResponse},
+			Success:          true,
+			TotalTime:        totalTime,
+			TimeToFirstToken: timeToFirstToken,
+			ResponseTokens:   tokens,
+			Type:             ENDPOINTS.CHAT,
 		}, nil
 	case "v1/completions":
 		return ResponseInfo{
-			Miner:     miner,
-			Success:   true,
-			TotalTime: totalTime,
-
-			Type: ENDPOINTS.COMPLETION,
-			Data: Data{Completion: Completion{Responses: llmResponse, ResponseTokens: tokens, TimeToFirstToken: timeToFirstToken}},
+			Miner:            miner,
+			Data:             Data{Completion: llmResponse},
+			Success:          true,
+			TotalTime:        totalTime,
+			TimeToFirstToken: timeToFirstToken,
+			ResponseTokens:   tokens,
+			Type:             ENDPOINTS.COMPLETION,
 		}, nil
-	default:
-		return ResponseInfo{}, errors.New("Unknown method")
 	}
 }
 
@@ -423,11 +419,8 @@ func saveRequest(db *sql.DB, res ResponseInfo, req RequestInfo, logger *zap.Suga
 		return
 	}
 
-
-	// Re-add later vv
-
 	// Update credits
-	// usedCredits := res.ResponseTokens * cpt
+	usedCredits := res.ResponseTokens * cpt
 	//_, err = db.Exec("UPDATE user SET credits=? WHERE id=?",
 	//	max(req.StartingCredits-int64(usedCredits), 0),
 	//	req.UserId)
@@ -435,27 +428,17 @@ func saveRequest(db *sql.DB, res ResponseInfo, req RequestInfo, logger *zap.Suga
 	//	logger.Errorf("Failed to update credits: %d - %d\n%s\n", req.StartingCredits, usedCredits, err)
 	//}
 
-	var responseJson []byte
-	var timeForFirstToken int64 = 0
-	switch res.Type {
-	case ENDPOINTS.CHAT:
-		timeForFirstToken = res.Data.Chat.TimeToFirstToken
-		responseJson, _ = json.Marshal(res.Data.Chat.Responses)
-	case ENDPOINTS.COMPLETION:
-		timeForFirstToken = res.Data.Chat.TimeToFirstToken
-		responseJson, _ = json.Marshal(res.Data.Completion.Responses)
-	case ENDPOINTS.IMAGE:
-		responseJson, _ = json.Marshal(res.Data.Image)
-	}
+	// Ask about this
+	responseJson, _ := json.Marshal(res.Data)
 	pubId, _ := nanoid.Generate("0123456789abcdefghijklmnopqrstuvwxyz", 28)
 	pubId = "req_" + pubId
 	_, err = db.Exec(`
 	INSERT INTO 
-		request (pub_id, user_id, credits_used, request, response, model_id, uid, hotkey, coldkey, miner_address, endpoint, success, time_to_first_token, total_time, scored)
-		VALUES	(?,      ?,       ?,            ?,       ?,        ?,        ?,   ?,      ?,       ?,             ?,        ?,       ?,                  ?,          ?)`,
+		request (pub_id, user_id, credits_used, request, response, model_id, uid, hotkey, coldkey, miner_address, endpoint, success, time_to_first_token, total_time, scored, enum)
+		VALUES	(?,      ?,       ?,            ?,       ?,        ?,        ?,   ?,      ?,       ?,             ?,        ?,       ?,                  ?,          ?,      ?)`,
 		pubId,
 		req.UserId,
-		0,
+		usedCredits,
 		string(req.Body),
 		string(responseJson),
 		model_id,
@@ -467,9 +450,10 @@ func saveRequest(db *sql.DB, res ResponseInfo, req RequestInfo, logger *zap.Suga
 			res.Miner.Port),
 		req.Endpoint,
 		res.Success,
-		timeForFirstToken,
+		res.TimeToFirstToken,
 		res.TotalTime,
 		req.Miner != nil,
+		res.Enum,
 	)
 
 	if err != nil {
