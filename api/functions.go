@@ -125,6 +125,12 @@ func safeEnv(env string) string {
 	}
 	return res
 }
+func getEnv(env, fallback string) string {
+	if value, ok := os.LookupEnv(env); ok {
+		return value
+	}
+	return fallback
+}
 
 func signMessage(message []byte, public string, private string) string {
 	// Signs a message via schnorrkel pub and private keys
