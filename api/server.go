@@ -101,7 +101,7 @@ func main() {
 	e.POST("/v1/chat/completions", func(c echo.Context) error {
 		cc := c.(*Context)
 		defer cc.log.Sync()
-		request, err := preprocessOpenaiRequest(cc, db)
+		request, err := preprocessOpenaiRequest(cc, db, ENDPOINTS.CHAT)
 		if err != nil {
 			error := err.(*RequestError)
 			cc.log.Error(err.Error())
@@ -129,7 +129,7 @@ func main() {
 	e.POST("/v1/completions", func(c echo.Context) error {
 		cc := c.(*Context)
 		defer cc.log.Sync()
-		request, err := preprocessOpenaiRequest(cc, db)
+		request, err := preprocessOpenaiRequest(cc, db, ENDPOINTS.COMPLETION)
 		if err != nil {
 			error := err.(*RequestError)
 			cc.log.Error(err.Error())
@@ -182,7 +182,7 @@ func main() {
 		}
 
 		// Send the image response - OpenAI image object
-		return c.String(200, map[string]interface{}{
+		return c.JSON(200, map[string]interface{}{
 			"b64_json": res.Data.Image,
 		})
 	})

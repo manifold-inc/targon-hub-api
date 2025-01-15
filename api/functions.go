@@ -28,7 +28,7 @@ import (
 	"go.uber.org/zap"
 )
 
-func preprocessOpenaiRequest(c *Context, db *sql.DB, endpoint Endpoints) (*RequestInfo, error) {
+func preprocessOpenaiRequest(c *Context, db *sql.DB, endpoint string) (*RequestInfo, error) {
 	c.Request().Header.Add("Content-Type", "application/json")
 	bearer := c.Request().Header.Get("Authorization")
 	miner := c.Request().Header.Get("X-Targon-Miner-Uid")
@@ -52,7 +52,7 @@ func preprocessOpenaiRequest(c *Context, db *sql.DB, endpoint Endpoints) (*Reque
 	}
 	if err != nil {
 		c.log.Errorf("Error fetching user data from api key: %v", err)
-		return nil, &RequestError{500, errors.New("Interal Server Error")}
+		return nil, &RequestError{500, errors.New("Internal Server Error")}
 	}
 	var payload map[string]interface{}
 	body, err := io.ReadAll(c.Request().Body)
@@ -279,7 +279,7 @@ func queryMiners(c *Context, req []byte, method string, miner_uid *int) (Respons
 	// Enum: Chat vs Completion?
 	if err != nil {
 		c.log.Warnf("Failed miner request: %s\n", err.Error())
-		return ResponseInfo{Miner: miner, ResponseTokens: tokens, Responses: nil, Success: false}, nil
+		return ResponseInfo{Miner: miner, ResponseTokens: tokens, Data: Data{}, Success: false}, nil
 	}
 
 	// Set headers
@@ -297,13 +297,13 @@ func queryMiners(c *Context, req []byte, method string, miner_uid *int) (Respons
 		if res != nil {
 			res.Body.Close()
 		}
-		return ResponseInfo{Miner: miner, ResponseTokens: tokens, Responses: nil, Success: false}, nil
+		return ResponseInfo{Miner: miner, ResponseTokens: tokens, Data: Data{}, Success: false}, nil
 	}
 	if res.StatusCode != http.StatusOK {
 		bdy, _ := io.ReadAll(res.Body)
 		res.Body.Close()
 		c.log.Warnf("Miner: %s %s\nError: %s\n", miner.Hotkey, miner.Coldkey, string(bdy))
-		return ResponseInfo{Miner: miner, ResponseTokens: tokens, Responses: nil, Success: false}, nil
+		return ResponseInfo{Miner: miner, ResponseTokens: tokens, Data: Data{}, Success: false}, nil
 	}
 
 	c.log.Infof("Miner: %s %s\n", miner.Hotkey, miner.Coldkey)
@@ -343,21 +343,21 @@ func queryMiners(c *Context, req []byte, method string, miner_uid *int) (Respons
 		}
 		res.Body.Close()	
 		if finished == false {
-			return ResponseInfo{Miner: miner, ResponseTokens: tokens,Data: Data{Chat: llmResponse}, Success: false, Enum: ENDPOINTS.CHAT}, nil
+			return ResponseInfo{Miner: miner, ResponseTokens: tokens, Data: Data{Chat: llmResponse}, Success: false, Enum: ENDPOINTS.CHAT}, nil
 		}
 	}  
 	
 	// Grabbing Image Response
 	if method == "v1/images/generations" {
-		var response string
-		// What is the response body format?
-		response, err := io.ReadAll(res.Body)
+		// Ask about this
+		var responseBytes []byte
+		responseBytes, err = io.ReadAll(res.Body)
 		if err != nil {
 			c.log.Errorf("Failed to read image response: %s", err.Error())
 			return ResponseInfo{Miner: miner, Success: false, Enum: ENDPOINTS.IMAGE}, nil
 		}
 		
-		imageResponse = string(response)
+		imageResponse = string(responseBytes)
 		// When to close the response body?
 		res.Body.Close()
 	}
@@ -423,7 +423,8 @@ func saveRequest(db *sql.DB, res ResponseInfo, req RequestInfo, logger *zap.Suga
 	//	logger.Errorf("Failed to update credits: %d - %d\n%s\n", req.StartingCredits, usedCredits, err)
 	//}
 
-	responseJson, _ := json.Marshal(res.Responses)
+	// Ask about this
+	responseJson, _ := json.Marshal(res.Data)
 	pubId, _ := nanoid.Generate("0123456789abcdefghijklmnopqrstuvwxyz", 28)
 	pubId = "req_" + pubId
 	_, err = db.Exec(`
@@ -447,7 +448,7 @@ func saveRequest(db *sql.DB, res ResponseInfo, req RequestInfo, logger *zap.Suga
 		res.TimeToFirstToken,
 		res.TotalTime,
 		req.Miner != nil,
-		res.Enum
+		res.Enum,
 	)
 
 	if err != nil {
