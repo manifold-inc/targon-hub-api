@@ -5,6 +5,8 @@ CHECK  := "\\xE2\\x9C\\x94"
 
 set shell := ["bash", "-uc"]
 
+set dotenv-required
+
 default:
   @just --list
 
@@ -37,3 +39,27 @@ history image:
 
 down:
   @docker compose down
+
+k8s-up: k8s-create k8s-build k8s-load k8s-deploy
+
+k8s-create:
+  kind create cluster --config ./k8s-deployment/local-kind-config.yaml
+
+k8s-build:
+  docker buildx build -t manifoldlabs/targon-hub-miner-cache:dev miner-cache --platform linux/amd64,linux/arm64
+  docker buildx build -t manifoldlabs/targon-hub-api:dev api --platform linux/amd64,linux/arm64
+  docker buildx build -t manifoldlabs/targon-hub-vram-estimator:dev vram-estimator --platform linux/amd64,linux/arm64
+
+k8s-load:
+  kind load docker-image manifoldlabs/targon-hub-api:dev \
+    manifoldlabs/targon-hub-vram-estimator:dev \
+    manifoldlabs/targon-hub-miner-cache:dev
+
+k8s-deploy:
+  envsubst < ./k8s-deployment/deployments.yaml | kubectl apply -f -
+
+k8s-delete:
+  kubectl delete ./k8s-deployment/deployments.yaml
+
+k8s-down:
+  kind delete cluster

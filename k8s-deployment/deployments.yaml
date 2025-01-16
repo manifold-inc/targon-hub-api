@@ -153,29 +153,29 @@ spec:
     spec:
       containers:
         - name: targon-hub-api
-          image: manifoldlabs/targon-hub-api:temp
+          image: manifoldlabs/targon-hub-api:dev
           ports:
             - name: web
               containerPort: 80
           env:
             - name: HOTKEY
-              value: ""
+              value: "$HOTKEY"
             - name: PUBLIC_KEY
-              value: ""
+              value: "$PUBLIC_KEY"
             - name: PRIVATE_KEY
-              value: ""
+              value: "$PRIVATE_KEY"
             - name: PROXY_URL
-              value: ""
+              value: "$PROXY_URL"
             - name: DSN
-              value: ""
+              value: "$DSN"
             - name: REDIS_HOST
-              value: ""
+              value: "$REDIS_HOST"
             - name: REDIS_PORT
-              value: ""
+              value: "$REDIS_PORT"
             - name: INFLUX_TOKEN
-              value: ""
+              value: "$INFLUX_TOKEN"
             - name: INFLUX_ENDPOINT
-              value: ""
+              value: "$INFLUX_ENDPOINT"
 ---
 kind: Deployment
 apiVersion: apps/v1
@@ -196,29 +196,29 @@ spec:
     spec:
       containers:
         - name: vram-estimator
-          image: manifoldlabs/targon-hub-vram-estimator:temp
+          image: manifoldlabs/targon-hub-vram-estimator:dev
           ports:
             - name: web
               containerPort: 80
           env:
             - name: HOTKEY
-              value: ""
+              value: "$HOTKEY"
             - name: PUBLIC_KEY
-              value: ""
+              value: "$PUBLIC_KEY"
             - name: PRIVATE_KEY
-              value: ""
+              value: "$PRIVATE_KEY"
             - name: PROXY_URL
-              value: ""
+              value: "$PROXY_URL"
             - name: DSN
-              value: ""
+              value: "$DSN"
             - name: REDIS_HOST
-              value: ""
+              value: "$REDIS_HOST"
             - name: REDIS_PORT
-              value: ""
+              value: "$REDIS_PORT"
             - name: INFLUX_TOKEN
-              value: ""
+              value: "$INFLUX_TOKEN"
             - name: INFLUX_ENDPOINT
-              value: ""
+              value: "$INFLUX_ENDPOINT"
 ---
 kind: Deployment
 apiVersion: apps/v1
@@ -243,25 +243,6 @@ spec:
           ports:
             - name: web
               containerPort: 6379
-          env:
-            - name: HOTKEY
-              value: ""
-            - name: PUBLIC_KEY
-              value: ""
-            - name: PRIVATE_KEY
-              value: ""
-            - name: PROXY_URL
-              value: ""
-            - name: DSN
-              value: ""
-            - name: REDIS_HOST
-              value: ""
-            - name: REDIS_PORT
-              value: ""
-            - name: INFLUX_TOKEN
-              value: ""
-            - name: INFLUX_ENDPOINT
-              value: ""
 ---
 kind: Deployment
 apiVersion: apps/v1
@@ -282,26 +263,26 @@ spec:
     spec:
       containers:
         - name: miner-cache
-          image: manifoldlabs/targon-hub-miner-cache:temp
+          image: manifoldlabs/targon-hub-miner-cache:dev
           env:
             - name: HOTKEY
-              value: ""
+              value: "$HOTKEY"
             - name: PUBLIC_KEY
-              value: ""
+              value: "$PUBLIC_KEY"
             - name: PRIVATE_KEY
-              value: ""
+              value: "$PRIVATE_KEY"
             - name: PROXY_URL
-              value: ""
+              value: "$PROXY_URL"
             - name: DSN
-              value: ""
+              value: "$DSN"
             - name: REDIS_HOST
-              value: ""
+              value: "$REDIS_HOST"
             - name: REDIS_PORT
-              value: ""
+              value: "$REDIS_PORT"
             - name: INFLUX_TOKEN
-              value: ""
+              value: "$INFLUX_TOKEN"
             - name: INFLUX_ENDPOINT
-              value: ""
+              value: "$INFLUX_ENDPOINT"
 ---
 apiVersion: v1
 kind: Service
@@ -359,7 +340,7 @@ spec:
                 name: targon-hub-api
                 port:
                   number: 80
-    - host: temp.localhost
+    - host: estimate.localhost
       http:
         paths:
           - path: /

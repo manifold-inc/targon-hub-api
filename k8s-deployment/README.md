@@ -33,15 +33,15 @@ This command initializes a Kubernetes cluster with the specified configuration (
 Build the required Docker images for the application:
 
 ```bash
-docker build -t manifoldlabs/targon-hub-miner-cache:temp miner-cache
-docker build -t manifoldlabs/targon-hub-api:temp api
-docker build -t manifoldlabs/targon-hub-vram-estimator:temp vram-estimator
+docker build -t manifoldlabs/targon-hub-miner-cache:dev miner-cache
+docker build -t manifoldlabs/targon-hub-api:dev api
+docker build -t manifoldlabs/targon-hub-vram-estimator:dev vram-estimator
 ```
 
 These commands build the following images:
-- **`manifoldlabs/targon-hub-miner-cache:temp`**: Miner Cache component.
-- **`manifoldlabs/targon-hub-api:temp`**: API component.
-- **`manifoldlabs/targon-hub-vram-estimator:temp`**: VRAM Estimator component.
+- **`manifoldlabs/targon-hub-miner-cache:dev`**: Miner Cache component.
+- **`manifoldlabs/targon-hub-api:dev`**: API component.
+- **`manifoldlabs/targon-hub-vram-estimator:dev`**: VRAM Estimator component.
 
 ---
 
@@ -50,9 +50,9 @@ These commands build the following images:
 Load the Docker images into the Kind cluster:
 
 ```bash
-kind load docker-image manifoldlabs/targon-hub-api:temp \
-    manifoldlabs/targon-hub-vram-estimator:temp \
-    manifoldlabs/targon-hub-miner-cache:temp
+kind load docker-image manifoldlabs/targon-hub-api:dev \
+    manifoldlabs/targon-hub-vram-estimator:dev \
+    manifoldlabs/targon-hub-miner-cache:dev
 ```
 
 This ensures the Docker images are available for use within the cluster.
