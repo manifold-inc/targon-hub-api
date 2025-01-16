@@ -28,14 +28,18 @@ import (
 	"go.uber.org/zap"
 )
 
-func preprocessOpenaiRequest(c *Context, db *sql.DB) (*RequestInfo, error) {
+func preprocessOpenaiRequest(c *Context, db *sql.DB, endpoint string) (*RequestInfo, error) {
 	c.Request().Header.Add("Content-Type", "application/json")
 	bearer := c.Request().Header.Get("Authorization")
 	miner := c.Request().Header.Get("X-Targon-Miner-Uid")
-	c.Response().Header().Set("Content-Type", "text/event-stream; charset=utf-8")
 	c.Response().Header().Set("Cache-Control", "no-cache")
 	c.Response().Header().Set("Connection", "keep-alive")
 	c.Response().Header().Set("X-Accel-Buffering", "no")
+
+	// Conditional Header for LLM
+	if endpoint == ENDPOINTS.CHAT || endpoint == ENDPOINTS.COMPLETION {
+		c.Response().Header().Set("Content-Type", "text/event-stream; charset=utf-8")
+	}
 
 	var (
 		credits int64
@@ -48,42 +52,58 @@ func preprocessOpenaiRequest(c *Context, db *sql.DB) (*RequestInfo, error) {
 	}
 	if err != nil {
 		c.log.Errorf("Error fetching user data from api key: %v", err)
-		return nil, &RequestError{500, errors.New("Interal Server Error")}
+		return nil, &RequestError{500, errors.New("internal server error")}
 	}
 	var payload map[string]interface{}
-	body, err := io.ReadAll(c.Request().Body)
+	body, _ := io.ReadAll(c.Request().Body)
 	err = json.Unmarshal(body, &payload)
 	if err != nil {
 		c.log.Error(err.Error())
-		return nil, &RequestError{500, errors.New("Internal Server Error")}
+		return nil, &RequestError{500, errors.New("internal server error")}
 	}
 
-	if stream, ok := payload["stream"]; !ok || !stream.(bool) {
-		return nil, &RequestError{400, errors.New("Targon currently only supports streaming requests")}
+	// Image Defaults - Width, Height, Prompt (NOT NULL)
+	if endpoint == ENDPOINTS.IMAGE {
+		if _, ok := payload["width"]; !ok {
+			payload["width"] = 1024
+		}
+		if _, ok := payload["height"]; !ok {
+			payload["height"] = 1024
+		}
+		if _, ok := payload["prompt"]; !ok {
+			return nil, &RequestError{400, errors.New("prompt is required")}
+		}
 	}
 
-	// Defaults
-	if _, ok := payload["seed"]; !ok {
-		payload["seed"] = rand.Intn(100000)
-	}
-	if _, ok := payload["temperature"]; !ok {
-		payload["temperature"] = 1
-	}
+	// Conditional Check for LLM
+	if endpoint == ENDPOINTS.CHAT || endpoint == ENDPOINTS.COMPLETION {
+		if stream, ok := payload["stream"]; !ok || !stream.(bool) {
+			return nil, &RequestError{400, errors.New("targon currently only supports streaming requests")}
+		}
 
-	if _, ok := payload["max_tokens"]; !ok {
-		payload["max_tokens"] = 512
-	} else if credits < int64(payload["max_tokens"].(float64)) {
-		return nil, &RequestError{403, errors.New("Out of credits")}
-	}
+		if _, ok := payload["seed"]; !ok {
+			payload["seed"] = rand.Intn(100000)
+		}
 
-	if logprobs, ok := payload["logprobs"]; !ok || !logprobs.(bool) {
-		payload["logprobs"] = true
+		if _, ok := payload["temperature"]; !ok {
+			payload["temperature"] = 1
+		}
+
+		if _, ok := payload["max_tokens"]; !ok {
+			payload["max_tokens"] = 512
+		} else if credits < int64(payload["max_tokens"].(float64)) {
+			return nil, &RequestError{403, errors.New("out of credits")}
+		}
+
+		if logprobs, ok := payload["logprobs"]; !ok || !logprobs.(bool) {
+			payload["logprobs"] = true
+		}
 	}
 
 	body, err = json.Marshal(payload)
 	if err != nil {
 		c.log.Error(err.Error())
-		return nil, &RequestError{500, errors.New("Internal Server Error")}
+		return nil, &RequestError{500, errors.New("internal server error")}
 	}
 
 	res := &RequestInfo{Body: body, UserId: userid, StartingCredits: credits}
@@ -91,6 +111,7 @@ func preprocessOpenaiRequest(c *Context, db *sql.DB) (*RequestInfo, error) {
 	if err == nil {
 		res.Miner = &miner_uid
 	}
+	res.Endpoint = endpoint
 	return res, nil
 }
 
@@ -176,13 +197,13 @@ func queryMiners(c *Context, req []byte, method string, miner_uid *int) (Respons
 	err := json.Unmarshal(req, &requestBody)
 	if err != nil {
 		c.log.Errorf("Error unmarshaling request body: %s\nBody: %s\n", err.Error(), string(req))
-		return ResponseInfo{}, errors.New("Invalid Body")
+		return ResponseInfo{}, errors.New("invalid body")
 	}
 
 	// First we get our miners
 	miners := getMinersForModel(c, requestBody.Model)
-	if miners == nil || len(miners) == 0 {
-		return ResponseInfo{}, errors.New("No Miners")
+	if len(miners) == 0 {
+		return ResponseInfo{}, errors.New("no miners")
 	}
 
 	// Call specific miner if passed
@@ -199,30 +220,39 @@ func queryMiners(c *Context, req []byte, method string, miner_uid *int) (Respons
 			}
 		}
 		if !found {
-			return ResponseInfo{}, errors.New("No Miners")
+			return ResponseInfo{}, errors.New("no miners")
 		}
 		c.log.Infof("Requesting Specific miner uid %d", miner.Uid)
 	}
 
-	// Build the rest of the body hash
 	tr := &http.Transport{
 		Dial: (&net.Dialer{
 			Timeout: 2 * time.Second,
 		}).Dial,
 		TLSHandshakeTimeout:   2 * time.Second,
-		ResponseHeaderTimeout: 4 * time.Second,
 		DisableKeepAlives:     false,
 	}
-	httpClient := http.Client{Transport: tr, Timeout: 10 * time.Second}
+	httpClient := http.Client{Transport: tr, Timeout: 2 * time.Minute}
 
 	// query each miner at the same time with the variable context of the
 	// parent function via go routines
 	tokens := 0
-	endpoint := "http://" + miner.Ip + ":" + fmt.Sprint(miner.Port) + method
+
+	var imageResponse Image
+	var llmResponse []map[string]interface{}
+	var timeToFirstToken int64
+
+	route, ok := ROUTES[method]
+	if !ok {
+		return ResponseInfo{}, errors.New("unknown method")
+	}
+
+	endpoint := "http://" + miner.Ip + ":" + fmt.Sprint(miner.Port) + route
 	timestamp := time.Now().UnixMilli()
 	id := uuid.New().String()
 	timestampInterval := int64(math.Ceil(float64(timestamp) / 1e4))
 
+	// Build the rest of the body hash
 	bodyHash := sha256Hash(req)
 	message := fmt.Sprintf("%s.%s.%d.%s", bodyHash, id, timestamp, miner.Hotkey)
 	requestSignature := signMessage([]byte(message), PUBLIC_KEY, PRIVATE_KEY)
@@ -239,18 +269,17 @@ func queryMiners(c *Context, req []byte, method string, miner_uid *int) (Respons
 		"Epistula-Secret-Signature-2": signMessage([]byte(fmt.Sprintf("%d.%s", timestampInterval+1, miner.Hotkey)), PUBLIC_KEY, PRIVATE_KEY),
 		"X-Targon-Model":              requestBody.Model,
 		"Content-Type":                "application/json",
-		"Connection":                  "keep-alive",
 	}
 
-	ctx, cancel := context.WithCancel(c.Request().Context())
-	timer := time.AfterFunc(4*time.Second, func() {
-		cancel()
-	})
+	// Add Connection header for LLM requests
+	if method == ENDPOINTS.COMPLETION || method == ENDPOINTS.CHAT {
+		headers["Connection"] = "keep-alive"
+	}
 
 	r, err := http.NewRequest("POST", endpoint, bytes.NewBuffer(req))
 	if err != nil {
 		c.log.Warnf("Failed miner request: %s\n", err.Error())
-		return ResponseInfo{Miner: miner, ResponseTokens: tokens, Responses: nil, Success: false}, nil
+		return ResponseInfo{Miner: miner, Success: false}, nil
 	}
 
 	// Set headers
@@ -258,9 +287,18 @@ func queryMiners(c *Context, req []byte, method string, miner_uid *int) (Respons
 		r.Header.Set(key, value)
 	}
 	r.Close = true
-	r.WithContext(c.Request().Context())
+	r = r.WithContext(c.Request().Context())
 
-	r = r.WithContext(ctx)
+	ctx, cancel := context.WithCancel(c.Request().Context())
+	timer := time.AfterFunc(4*time.Second, func() {
+		cancel()
+	})
+
+	// wrap this line in conditional for chat or completion
+	if method == ENDPOINTS.COMPLETION || method == ENDPOINTS.CHAT {
+		r = r.WithContext(ctx)
+	}
+
 	res, err := httpClient.Do(r)
 	start := time.Now()
 	if err != nil {
@@ -268,63 +306,106 @@ func queryMiners(c *Context, req []byte, method string, miner_uid *int) (Respons
 		if res != nil {
 			res.Body.Close()
 		}
-		return ResponseInfo{Miner: miner, ResponseTokens: tokens, Responses: nil, Success: false}, nil
+		return ResponseInfo{Miner: miner, Success: false}, nil
 	}
 	if res.StatusCode != http.StatusOK {
-		bdy, _ := io.ReadAll(res.Body)
+		body, _ := io.ReadAll(res.Body)
 		res.Body.Close()
-		c.log.Warnf("Miner: %s %s\nError: %s\n", miner.Hotkey, miner.Coldkey, string(bdy))
-		return ResponseInfo{Miner: miner, ResponseTokens: tokens, Responses: nil, Success: false}, nil
+		c.log.Warnf("Miner: %s %s\nError: %s\n", miner.Hotkey, miner.Coldkey, string(body))
+		return ResponseInfo{Miner: miner, Success: false}, nil
 	}
 
 	c.log.Infof("Miner: %s %s\n", miner.Hotkey, miner.Coldkey)
-	reader := bufio.NewScanner(res.Body)
-	finished := false
-	var responses []map[string]interface{}
-	var timeToFirstToken int64
-	for reader.Scan() {
-		select {
-		case <-c.Request().Context().Done():
-			return ResponseInfo{}, errors.New("Request Canceled")
-		default:
-			timer.Reset(2 * time.Second)
-			token := reader.Text()
-			fmt.Fprintf(c.Response(), token+"\n\n")
-			c.Response().Flush()
-			if token == "data: [DONE]" {
-				finished = true
-				break
-			}
-			token, found := strings.CutPrefix(token, "data: ")
-			if found {
-				if tokens == 0 {
-					timeToFirstToken = int64(time.Since(start) / time.Millisecond)
+
+	switch method {
+	case ENDPOINTS.COMPLETION:
+		fallthrough
+	case ENDPOINTS.CHAT:
+		reader := bufio.NewScanner(res.Body)
+		finished := false
+		for reader.Scan() {
+			select {
+			case <-c.Request().Context().Done():
+				return ResponseInfo{}, errors.New("request canceled")
+			default:
+				timer.Reset(2 * time.Second)
+				token := reader.Text()
+				fmt.Fprint(c.Response(), token+"\n\n")
+				c.Response().Flush()
+				if token == "data: [DONE]" {
+					finished = true
+					break
 				}
-				tokens += 1
-				var response map[string]interface{}
-				err := json.Unmarshal([]byte(token), &response)
-				if err != nil {
-					c.log.Errorf("Failed decoing token string: %s - Token: %s", err.Error(), token)
-					continue
+				token, found := strings.CutPrefix(token, "data: ")
+				if found {
+					if tokens == 0 {
+						timeToFirstToken = int64(time.Since(start) / time.Millisecond)
+					}
+					tokens += 1
+					var response map[string]interface{}
+					err := json.Unmarshal([]byte(token), &response)
+					if err != nil {
+						c.log.Errorf("Failed decoding token string: %s - Token: %s", err.Error(), token)
+						continue
+					}
+					llmResponse = append(llmResponse, response)
 				}
-				responses = append(responses, response)
 			}
 		}
+		res.Body.Close()
+		if !finished {
+			if method == ENDPOINTS.CHAT {
+				return ResponseInfo{Miner: miner, Data: Data{Chat: Chat{ResponseTokens: tokens, TimeToFirstToken: timeToFirstToken, Responses: llmResponse}}, Success: false, Type: ENDPOINTS.CHAT}, nil
+			}
+			return ResponseInfo{Miner: miner, Data: Data{Completion: Completion{ResponseTokens: tokens, TimeToFirstToken: timeToFirstToken, Responses: llmResponse}}, Success: false, Type: ENDPOINTS.COMPLETION}, nil
+		}
+	case ENDPOINTS.IMAGE:
+		responseBytes, err := io.ReadAll(res.Body)
+		if err != nil {
+			c.log.Errorf("Failed to read image response: %s", err.Error())
+		  return ResponseInfo{Miner: miner, Success: false, Type: ENDPOINTS.IMAGE}, nil
+		}
+
+		json.Unmarshal(responseBytes, &imageResponse)
+		res.Body.Close()
+	default:
+		return ResponseInfo{}, errors.New("unknown method")
 	}
-	res.Body.Close()
-	if finished == false {
-		return ResponseInfo{Miner: miner, ResponseTokens: tokens, Responses: responses, Success: false}, nil
-	}
+
 	totalTime := int64(time.Since(start) / time.Millisecond)
 	c.log.Infof("Finished Request in %dms", totalTime)
-	return ResponseInfo{
-		Miner:            miner,
-		ResponseTokens:   tokens,
-		Responses:        responses,
-		Success:          true,
-		TotalTime:        totalTime,
-		TimeToFirstToken: timeToFirstToken,
-	}, nil
+
+	switch method {
+	case ENDPOINTS.IMAGE:
+		return ResponseInfo{
+			Miner:     miner,
+			Success:   true,
+			TotalTime: totalTime,
+
+			Type: ENDPOINTS.IMAGE,
+			Data: Data{Image: imageResponse},
+		}, nil
+	case ENDPOINTS.CHAT:
+		return ResponseInfo{
+			Miner:     miner,
+			Success:   true,
+			TotalTime: totalTime,
+
+			Type: ENDPOINTS.CHAT,
+			Data: Data{Chat: Chat{Responses: llmResponse, ResponseTokens: tokens, TimeToFirstToken: timeToFirstToken}},
+		}, nil
+	case ENDPOINTS.COMPLETION:
+		return ResponseInfo{
+			Miner:     miner,
+			Success:   true,
+			TotalTime: totalTime,
+
+			Type: ENDPOINTS.COMPLETION,
+			Data: Data{Completion: Completion{Responses: llmResponse, ResponseTokens: tokens, TimeToFirstToken: timeToFirstToken}},
+		}, nil
+	default:
+		return ResponseInfo{}, errors.New("unknown method")
+	}
 }
 
 func saveRequest(db *sql.DB, res ResponseInfo, req RequestInfo, logger *zap.SugaredLogger) {
@@ -345,8 +426,11 @@ func saveRequest(db *sql.DB, res ResponseInfo, req RequestInfo, logger *zap.Suga
 		return
 	}
 
+
+	// Re-add later vv
+
 	// Update credits
-	usedCredits := res.ResponseTokens * cpt
+	// usedCredits := res.ResponseTokens * cpt
 	//_, err = db.Exec("UPDATE user SET credits=? WHERE id=?",
 	//	max(req.StartingCredits-int64(usedCredits), 0),
 	//	req.UserId)
@@ -354,16 +438,27 @@ func saveRequest(db *sql.DB, res ResponseInfo, req RequestInfo, logger *zap.Suga
 	//	logger.Errorf("Failed to update credits: %d - %d\n%s\n", req.StartingCredits, usedCredits, err)
 	//}
 
-	responseJson, _ := json.Marshal(res.Responses)
+	var responseJson []byte
+	var timeForFirstToken int64 = 0
+	switch res.Type {
+	case ENDPOINTS.CHAT:
+		timeForFirstToken = res.Data.Chat.TimeToFirstToken
+		responseJson, _ = json.Marshal(res.Data.Chat.Responses)
+	case ENDPOINTS.COMPLETION:
+		timeForFirstToken = res.Data.Chat.TimeToFirstToken
+		responseJson, _ = json.Marshal(res.Data.Completion.Responses)
+	case ENDPOINTS.IMAGE:
+		responseJson, _ = json.Marshal(res.Data.Image)
+	}
 	pubId, _ := nanoid.Generate("0123456789abcdefghijklmnopqrstuvwxyz", 28)
 	pubId = "req_" + pubId
 	_, err = db.Exec(`
 	INSERT INTO 
 		request (pub_id, user_id, credits_used, request, response, model_id, uid, hotkey, coldkey, miner_address, endpoint, success, time_to_first_token, total_time, scored)
-		VALUES	(?,      ?,       ?,            ?,       ?,        ?,        ?,   ?,      ?,       ?,             ?,        ?,       ?,                   ?,          ?)`,
+		VALUES	(?,      ?,       ?,            ?,       ?,        ?,        ?,   ?,      ?,       ?,             ?,        ?,       ?,                  ?,          ?)`,
 		pubId,
 		req.UserId,
-		usedCredits,
+		0,
 		string(req.Body),
 		string(responseJson),
 		model_id,
@@ -375,7 +470,7 @@ func saveRequest(db *sql.DB, res ResponseInfo, req RequestInfo, logger *zap.Suga
 			res.Miner.Port),
 		req.Endpoint,
 		res.Success,
-		res.TimeToFirstToken,
+		timeForFirstToken,
 		res.TotalTime,
 		req.Miner != nil,
 	)
@@ -384,5 +479,4 @@ func saveRequest(db *sql.DB, res ResponseInfo, req RequestInfo, logger *zap.Suga
 		logger.Errorw("Failed to update", "error", err.Error())
 		return
 	}
-	return
 }

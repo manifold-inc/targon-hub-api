@@ -85,7 +85,7 @@ func main() {
 			return c.String(500, "Internal Server Error")
 		},
 	}))
-	db, err := sql.Open("mysql", DSN)
+	db, _ := sql.Open("mysql", DSN)
 	err = db.Ping()
 	if err != nil {
 		sugar.Error(err.Error())
@@ -102,15 +102,14 @@ func main() {
 	e.POST("/v1/chat/completions", func(c echo.Context) error {
 		cc := c.(*Context)
 		defer cc.log.Sync()
-		request, err := preprocessOpenaiRequest(cc, db)
+		request, err := preprocessOpenaiRequest(cc, db, ENDPOINTS.CHAT)
 		if err != nil {
 			error := err.(*RequestError)
 			cc.log.Error(err.Error())
 			return cc.String(error.StatusCode, error.Err.Error())
 		}
 		cc.log.Infof("/api/chat/completions - %d\n", request.UserId)
-		request.Endpoint = ENDPOINTS.CHAT
-		res, err := queryMiners(cc, request.Body, "/v1/chat/completions", request.Miner)
+		res, err := queryMiners(cc, request.Body, ENDPOINTS.CHAT, request.Miner)
 		go saveRequest(db, res, *request, cc.log)
 
 		if err != nil {
@@ -125,18 +124,18 @@ func main() {
 
 		return c.String(200, "")
 	})
+
 	e.POST("/v1/completions", func(c echo.Context) error {
 		cc := c.(*Context)
 		defer cc.log.Sync()
-		request, err := preprocessOpenaiRequest(cc, db)
+		request, err := preprocessOpenaiRequest(cc, db, ENDPOINTS.COMPLETION)
 		if err != nil {
 			error := err.(*RequestError)
 			cc.log.Error(err.Error())
 			return cc.String(error.StatusCode, error.Err.Error())
 		}
 		cc.log.Infof("/api/completions - %d\n", request.UserId)
-		request.Endpoint = ENDPOINTS.COMPLETION
-		res, err := queryMiners(cc, request.Body, "/v1/completions", request.Miner)
+		res, err := queryMiners(cc, request.Body, ENDPOINTS.COMPLETION, request.Miner)
 
 		go saveRequest(db, res, *request, cc.log)
 
@@ -151,6 +150,38 @@ func main() {
 		}
 
 		return c.String(200, "")
+	})
+
+	e.POST("/v1/images/generations", func(c echo.Context) error {
+		cc := c.(*Context)
+		defer cc.log.Sync()
+		request, err := preprocessOpenaiRequest(cc, db, ENDPOINTS.IMAGE)
+		
+		if err != nil {
+			error := err.(*RequestError)
+			cc.log.Error(err.Error())
+			return cc.String(error.StatusCode, error.Err.Error())
+		}
+
+		cc.log.Infof("/api/images/generations - %d\n", request.UserId)
+		res, err := queryMiners(cc, request.Body, ENDPOINTS.IMAGE, request.Miner)
+
+		go saveRequest(db, res, *request, cc.log)
+
+		if err != nil {
+			cc.log.Warn(err.Error())
+			return c.String(500, err.Error())
+		}
+
+		if !res.Success {
+			cc.log.Warnf("Miner %d: %s %s\n Failed request\n", res.Miner.Uid, res.Miner.Hotkey, res.Miner.Coldkey)
+			return c.String(500, fmt.Sprintf("Miner UID %d Failed Request. Try Again.", res.Miner.Uid))
+		}
+
+		// Send the image response - OpenAI image object
+		return c.JSON(200, map[string]interface{}{
+			"b64_json": res.Data.Image,
+		})
 	})
 	e.Logger.Fatal(e.Start(":80"))
 }

@@ -65,18 +65,53 @@ type RequestInfo struct {
 	Miner           *int
 }
 
+// Organize Fields Dependent on Type of Response
 type ResponseInfo struct {
-	Miner            Miner
+	Miner     Miner
+	Success   bool
+	TotalTime int64
+
+	Type string
+	Data Data
+}
+
+type Data struct {
+	Image      Image
+	Chat       Chat
+	Completion Completion
+}
+
+type Completion struct {
+	TimeToFirstToken int64
 	ResponseTokens   int
 	Responses        []map[string]interface{}
-	Success          bool
-	TotalTime        int64
+}
+
+type Chat struct {
 	TimeToFirstToken int64
+	ResponseTokens   int
+	Responses        []map[string]interface{}
+}
+
+type Image struct {
+	Created float64     `json:"created"`
+	Data    []ImageData `json:"data"`
+}
+
+type ImageData struct {
+	B64_json string `json:"b64_json"`
 }
 
 type Endpoints struct {
 	CHAT       string
 	COMPLETION string
+	IMAGE      string
 }
 
-var ENDPOINTS = Endpoints{CHAT: "CHAT", COMPLETION: "COMPLETION"}
+var ENDPOINTS = Endpoints{CHAT: "CHAT", COMPLETION: "COMPLETION", IMAGE: "IMAGE"}
+ 
+var ROUTES = map[string]string{
+	ENDPOINTS.CHAT: "/v1/chat/completions",
+	ENDPOINTS.COMPLETION: "/v1/completions",
+	ENDPOINTS.IMAGE: "/v1/images/generations",
+}
