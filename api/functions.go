@@ -225,8 +225,6 @@ func queryMiners(c *Context, req []byte, method string, miner_uid *int) (Respons
 		c.log.Infof("Requesting Specific miner uid %d", miner.Uid)
 	}
 
-	// Define timeouts
-	// TODO modify timeouts for miners
 	tr := &http.Transport{
 		Dial: (&net.Dialer{
 			Timeout: 2 * time.Second,
@@ -244,7 +242,12 @@ func queryMiners(c *Context, req []byte, method string, miner_uid *int) (Respons
 	var llmResponse []map[string]interface{}
 	var timeToFirstToken int64
 
-	endpoint := "http://" + miner.Ip + ":" + fmt.Sprint(miner.Port) + method
+	route, ok := ROUTES[method]
+	if !ok {
+		return ResponseInfo{}, errors.New("unknown method")
+	}
+
+	endpoint := "http://" + miner.Ip + ":" + fmt.Sprint(miner.Port) + route
 	timestamp := time.Now().UnixMilli()
 	id := uuid.New().String()
 	timestampInterval := int64(math.Ceil(float64(timestamp) / 1e4))
