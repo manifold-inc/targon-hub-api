@@ -63,6 +63,7 @@ type RequestInfo struct {
 	Body            []byte
 	Endpoint        string
 	Miner           *int
+	Id              string
 }
 
 // Organize Fields Dependent on Type of Response
@@ -109,9 +110,10 @@ type Endpoints struct {
 }
 
 var ENDPOINTS = Endpoints{CHAT: "CHAT", COMPLETION: "COMPLETION", IMAGE: "IMAGE"}
- 
+
 var ROUTES = map[string]string{
-	ENDPOINTS.CHAT: "/v1/chat/completions",
+	ENDPOINTS.CHAT:       "/v1/chat/completions",
 	ENDPOINTS.COMPLETION: "/v1/completions",
-	ENDPOINTS.IMAGE: "/v1/images/generations",
+	ENDPOINTS.IMAGE:      "/v1/images/generations",
 }
+

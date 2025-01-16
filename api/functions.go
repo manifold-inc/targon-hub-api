@@ -22,7 +22,6 @@ import (
 	"time"
 
 	"github.com/ChainSafe/go-schnorrkel"
-	"github.com/aidarkhanov/nanoid"
 	"github.com/google/uuid"
 	"github.com/nitishm/go-rejson/v4"
 	"go.uber.org/zap"
@@ -106,7 +105,7 @@ func preprocessOpenaiRequest(c *Context, db *sql.DB, endpoint string) (*RequestI
 		return nil, &RequestError{500, errors.New("internal server error")}
 	}
 
-	res := &RequestInfo{Body: body, UserId: userid, StartingCredits: credits}
+	res := &RequestInfo{Body: body, UserId: userid, StartingCredits: credits, Id: c.reqid}
 	miner_uid, err := strconv.Atoi(miner)
 	if err == nil {
 		res.Miner = &miner_uid
@@ -229,8 +228,8 @@ func queryMiners(c *Context, req []byte, method string, miner_uid *int) (Respons
 		Dial: (&net.Dialer{
 			Timeout: 2 * time.Second,
 		}).Dial,
-		TLSHandshakeTimeout:   2 * time.Second,
-		DisableKeepAlives:     false,
+		TLSHandshakeTimeout: 2 * time.Second,
+		DisableKeepAlives:   false,
 	}
 	httpClient := http.Client{Transport: tr, Timeout: 2 * time.Minute}
 
@@ -363,7 +362,7 @@ func queryMiners(c *Context, req []byte, method string, miner_uid *int) (Respons
 		responseBytes, err := io.ReadAll(res.Body)
 		if err != nil {
 			c.log.Errorf("Failed to read image response: %s", err.Error())
-		  return ResponseInfo{Miner: miner, Success: false, Type: ENDPOINTS.IMAGE}, nil
+			return ResponseInfo{Miner: miner, Success: false, Type: ENDPOINTS.IMAGE}, nil
 		}
 
 		json.Unmarshal(responseBytes, &imageResponse)
@@ -426,7 +425,6 @@ func saveRequest(db *sql.DB, res ResponseInfo, req RequestInfo, logger *zap.Suga
 		return
 	}
 
-
 	// Re-add later vv
 
 	// Update credits
@@ -450,13 +448,11 @@ func saveRequest(db *sql.DB, res ResponseInfo, req RequestInfo, logger *zap.Suga
 	case ENDPOINTS.IMAGE:
 		responseJson, _ = json.Marshal(res.Data.Image)
 	}
-	pubId, _ := nanoid.Generate("0123456789abcdefghijklmnopqrstuvwxyz", 28)
-	pubId = "req_" + pubId
 	_, err = db.Exec(`
 	INSERT INTO 
 		request (pub_id, user_id, credits_used, request, response, model_id, uid, hotkey, coldkey, miner_address, endpoint, success, time_to_first_token, total_time, scored)
 		VALUES	(?,      ?,       ?,            ?,       ?,        ?,        ?,   ?,      ?,       ?,             ?,        ?,       ?,                  ?,          ?)`,
-		pubId,
+		req.Id,
 		req.UserId,
 		0,
 		string(req.Body),

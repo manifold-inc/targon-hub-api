@@ -68,9 +68,9 @@ func main() {
 	e.Use(middleware.CORS())
 	e.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
-			reqId, _ := nanoid.Generate("0123456789abcdefghijklmnopqrstuvwxyz", 12)
+			reqId, _ := nanoid.Generate("0123456789abcdefghijklmnopqrstuvwxyz", 28)
 			logger := sugar.With(
-				"request_id", reqId,
+				"request_id", "req_"+reqId,
 			)
 
 			cc := &Context{c, logger, reqId}
@@ -156,7 +156,7 @@ func main() {
 		cc := c.(*Context)
 		defer cc.log.Sync()
 		request, err := preprocessOpenaiRequest(cc, db, ENDPOINTS.IMAGE)
-		
+
 		if err != nil {
 			error := err.(*RequestError)
 			cc.log.Error(err.Error())
