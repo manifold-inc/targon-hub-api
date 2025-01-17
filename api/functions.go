@@ -28,6 +28,7 @@ import (
 )
 
 func preprocessOpenaiRequest(c *Context, db *sql.DB, endpoint string) (*RequestInfo, error) {
+	c.log = c.log.With("endpoint", endpoint)
 	c.Request().Header.Add("Content-Type", "application/json")
 	bearer := c.Request().Header.Get("Authorization")
 	miner := c.Request().Header.Get("X-Targon-Miner-Uid")
@@ -441,13 +442,18 @@ func saveRequest(db *sql.DB, res ResponseInfo, req RequestInfo, logger *zap.Suga
 	switch res.Type {
 	case ENDPOINTS.CHAT:
 		timeForFirstToken = res.Data.Chat.TimeToFirstToken
-		responseJson, _ = json.Marshal(res.Data.Chat.Responses)
+		responseJson, err = json.Marshal(res.Data.Chat.Responses)
 	case ENDPOINTS.COMPLETION:
 		timeForFirstToken = res.Data.Chat.TimeToFirstToken
-		responseJson, _ = json.Marshal(res.Data.Completion.Responses)
+		responseJson, err = json.Marshal(res.Data.Completion.Responses)
 	case ENDPOINTS.IMAGE:
-		responseJson, _ = json.Marshal(res.Data.Image)
+		responseJson, err = json.Marshal(res.Data.Image)
 	}
+
+	if err != nil {
+		logger.Errorw("Failed to parse json: "+string(responseJson), "error", err.Error())
+	}
+
 	_, err = db.Exec(`
 	INSERT INTO 
 		request (pub_id, user_id, credits_used, request, response, model_id, uid, hotkey, coldkey, miner_address, endpoint, success, time_to_first_token, total_time, scored)
