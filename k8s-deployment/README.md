@@ -11,6 +11,7 @@ Before proceeding, ensure the following tools are installed:
 - [Docker](https://docs.docker.com/get-docker/)
 - [Kind](https://kind.sigs.k8s.io/)
 - [kubectl](https://kubernetes.io/docs/tasks/tools/install-kubectl/)
+- [envsubst](https://command-not-found.com/envsubst)
 
 ---
 
