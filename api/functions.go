@@ -312,25 +312,12 @@ func queryMiners(c *Context, req RequestInfo) (ResponseInfo, error) {
 	ctx, cancel := context.WithCancel(c.Request().Context())
 	var timer *time.Timer
 
-	switch req.Endpoint {
-	case ENDPOINTS.CHAT, ENDPOINTS.COMPLETION:
+	if req.Endpoint == ENDPOINTS.CHAT || req.Endpoint == ENDPOINTS.COMPLETION {
 		r = r.WithContext(ctx)
 		timer = time.AfterFunc(4*time.Second, func() {
 			cancel()
 		})
-	case ENDPOINTS.IMAGE:
-		// TODO remove this. We dont need a timer for images, that doesnt make sense. 
-		// Images arent streamed back. Timers are only needed for streaming llm responses
-		r = r.WithContext(ctx)
-		timer = time.AfterFunc(5*time.Minute, func() {
-			cancel()
-		})
-	default:
-		// What is going on here, why are we handling the default case like this?
-		c.log.Errorf("Unknown method: %s", req.Endpoint)
-		r = r.WithContext(ctx)
-		cancel()
-	}
+	}	
 
 	res, err := httpClient.Do(r)
 	start := time.Now()
