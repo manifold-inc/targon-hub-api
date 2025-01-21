@@ -193,7 +193,7 @@ func getMinersForModel(c *Context, model string) []Miner {
 	return miners
 }
 
-func queryMiners(c *Context, req []byte, method string, miner_uid *int, miner_ip string) (ResponseInfo, error) {
+func queryMiners(c *Context, req []byte, method string, miner_uid *int, miner_host string) (ResponseInfo, error) {
 	// Query miners with llm request
 	var requestBody RequestBody
 	err := json.Unmarshal(req, &requestBody)
@@ -202,29 +202,28 @@ func queryMiners(c *Context, req []byte, method string, miner_uid *int, miner_ip
 		return ResponseInfo{}, errors.New("invalid body")
 	}
 
-	var miner Miner = Miner{Ip: miner_ip}
 	// First we get our miners
-	// miners := getMinersForModel(c, requestBody.Model)
-	// if len(miners) == 0 {
-	// 	return ResponseInfo{}, errors.New("no miners")
-	// }
+	miners := getMinersForModel(c, requestBody.Model)
+	if len(miners) == 0 {
+		return ResponseInfo{}, errors.New("no miners")
+	}
 
-	// // Call specific miner if passed
-	// miner := miners[0]
-	// c.log.Infof("Attempting to find miner %d", *miner_uid)
-	// found := false
-	// for i := range miners {
-	// 	m := miners[i]
-	// 	if m.Uid == *miner_uid {
-	// 		miner = m
-	// 		found = true
-	// 		break
-	// 	}
-	// }
-	// if !found {
-	// 	return ResponseInfo{}, errors.New("no miners")
-	// }
-	// c.log.Infof("Requesting Specific miner uid %d", miner.Uid)
+	// Call specific miner if passed
+	miner := miners[0]
+	c.log.Infof("Attempting to find miner %d", *miner_uid)
+	found := false
+	for i := range miners {
+		m := miners[i]
+		if m.Uid == *miner_uid {
+			miner = m
+			found = true
+			break
+		}
+	}
+	if !found {
+		return ResponseInfo{}, errors.New("no miners")
+	}
+	c.log.Infof("Requesting Specific miner uid %d", miner.Uid)
 
 	tr := &http.Transport{
 		Dial: (&net.Dialer{
@@ -248,9 +247,13 @@ func queryMiners(c *Context, req []byte, method string, miner_uid *int, miner_ip
 		return ResponseInfo{}, errors.New("unknown method")
 	}
 
-	// refactor later
-	endpoint := miner_ip + route
-	// endpoint := "http://" + miner.Ip + ":" + fmt.Sprint(miner.Port) + route
+	// Dynamically set endpoint based on which is available
+	var endpoint string
+	if miner_host != "" {
+		endpoint = miner_host + route
+	} else {
+		endpoint = "http://" + miner.Ip + ":" + fmt.Sprint(miner.Port) + route
+	}
 	timestamp := time.Now().UnixMilli()
 	id := uuid.New().String()
 	timestampInterval := int64(math.Ceil(float64(timestamp) / 1e4))
@@ -307,7 +310,6 @@ func queryMiners(c *Context, req []byte, method string, miner_uid *int, miner_ip
 			cancel()
 		})
 	default:
-		// Error logging for unknown method
 		c.log.Errorf("Unknown method: %s", method)		
 		r = r.WithContext(ctx)
 		cancel()
