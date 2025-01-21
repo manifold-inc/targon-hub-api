@@ -107,7 +107,7 @@ func preprocessOpenaiRequest(c *Context, db *sql.DB, endpoint string) (*RequestI
 		return nil, &RequestError{500, errors.New("internal server error")}
 	}
 
-	res := &RequestInfo{Body: body, UserId: userid, StartingCredits: credits}
+	res := &RequestInfo{Body: body, UserId: userid, StartingCredits: credits, Id: c.reqid}
 	miner_uid, err := strconv.Atoi(miner)
 	if err == nil {
 		res.Miner = &miner_uid
@@ -193,73 +193,88 @@ func getMinersForModel(c *Context, model string) []Miner {
 	return miners
 }
 
-func queryMiners(c *Context, req []byte, method string, miner_uid *int, miner_host string) (ResponseInfo, error) {
+func queryMiners(c *Context, req RequestInfo) (ResponseInfo, error) {
+	body := req.Body
 	// Query miners with llm request
 	var requestBody RequestBody
-	err := json.Unmarshal(req, &requestBody)
+	err := json.Unmarshal(body, &requestBody)
 	if err != nil {
-		c.log.Errorf("Error unmarshaling request body: %s\nBody: %s\n", err.Error(), string(req))
+		c.log.Errorf("Error unmarshaling request body: %s\nBody: %s\n", err.Error(), string(body))
 		return ResponseInfo{}, errors.New("invalid body")
 	}
 
-	// First we get our miners
-	miners := getMinersForModel(c, requestBody.Model)
-	if len(miners) == 0 {
-		return ResponseInfo{}, errors.New("no miners")
+	var miner Miner
+
+	if len(req.MinerHost) != 0 {
+		// TODO create miner struct based on miner host. set coldkey, hotkey to
+		// blank strings and uid to -1
+		// miner = Miner{}
 	}
 
-	// Call specific miner if passed
-	miner := miners[0]
-	c.log.Infof("Attempting to find miner %d", *miner_uid)
-	found := false
-	for i := range miners {
-		m := miners[i]
-		if m.Uid == *miner_uid {
-			miner = m
-			found = true
-			break
+	// Only get miners from redis if we dont specify host
+	if len(req.MinerHost) == 0 {
+		miners := getMinersForModel(c, requestBody.Model)
+		if len(miners) == 0 {
+			return ResponseInfo{}, errors.New("no miners")
 		}
+
+		miner = miners[0]
+
+		// Call specific miner if passed
+		if req.Miner != nil {
+			c.log.Infof("Attempting to find miner %d", *req.Miner)
+			found := false
+			for i := range miners {
+				m := miners[i]
+				if m.Uid == *req.Miner {
+					miner = m
+					found = true
+					break
+				}
+			}
+			if !found {
+				return ResponseInfo{}, errors.New("could not find miner with uid")
+			}
+		}
+
 	}
-	if !found {
-		return ResponseInfo{}, errors.New("no miners")
-	}
-	c.log.Infof("Requesting Specific miner uid %d", miner.Uid)
 
 	tr := &http.Transport{
 		Dial: (&net.Dialer{
 			Timeout: 2 * time.Second,
 		}).Dial,
-		TLSHandshakeTimeout:   2 * time.Second,
-		DisableKeepAlives:     false,
+		TLSHandshakeTimeout: 2 * time.Second,
+		DisableKeepAlives:   false,
 	}
 	httpClient := http.Client{Transport: tr, Timeout: 2 * time.Minute}
 
-	// query each miner at the same time with the variable context of the
-	// parent function via go routines
-	tokens := 0
-
+	var tokens int = 0
 	var imageResponse Image
 	var llmResponse []map[string]interface{}
 	var timeToFirstToken int64
 
-	route, ok := ROUTES[method]
+	route, ok := ROUTES[req.Endpoint]
 	if !ok {
 		return ResponseInfo{}, errors.New("unknown method")
 	}
 
-	// Dynamically set endpoint based on which is available
+	// TODO This should not be an if else / dynamic. it should always be the 'else' case. We need
+	// to break apart MinerHost to its ip / port format and put it into a Miner object
+	// in the above TODO
 	var endpoint string
-	if miner_host != "" {
-		endpoint = miner_host + route
+	if req.MinerHost != "" {
+		endpoint = req.MinerHost + route
 	} else {
 		endpoint = "http://" + miner.Ip + ":" + fmt.Sprint(miner.Port) + route
 	}
+
+	// start creation of signature
 	timestamp := time.Now().UnixMilli()
 	id := uuid.New().String()
 	timestampInterval := int64(math.Ceil(float64(timestamp) / 1e4))
 
 	// Build the rest of the body hash
-	bodyHash := sha256Hash(req)
+	bodyHash := sha256Hash(req.Body)
 	message := fmt.Sprintf("%s.%s.%d.%s", bodyHash, id, timestamp, miner.Hotkey)
 	requestSignature := signMessage([]byte(message), PUBLIC_KEY, PRIVATE_KEY)
 
@@ -278,11 +293,11 @@ func queryMiners(c *Context, req []byte, method string, miner_uid *int, miner_ho
 	}
 
 	// Add Connection header for LLM requests
-	if method == ENDPOINTS.COMPLETION || method == ENDPOINTS.CHAT {
+	if req.Endpoint == ENDPOINTS.COMPLETION || req.Endpoint == ENDPOINTS.CHAT {
 		headers["Connection"] = "keep-alive"
 	}
 
-	r, err := http.NewRequest("POST", endpoint, bytes.NewBuffer(req))
+	r, err := http.NewRequest("POST", endpoint, bytes.NewBuffer(req.Body))
 	if err != nil {
 		c.log.Warnf("Failed miner request: %s\n", err.Error())
 		return ResponseInfo{Miner: miner, Success: false}, nil
@@ -298,19 +313,22 @@ func queryMiners(c *Context, req []byte, method string, miner_uid *int, miner_ho
 	ctx, cancel := context.WithCancel(c.Request().Context())
 	var timer *time.Timer
 
-	switch method {
+	switch req.Endpoint {
 	case ENDPOINTS.CHAT, ENDPOINTS.COMPLETION:
 		r = r.WithContext(ctx)
 		timer = time.AfterFunc(4*time.Second, func() {
 			cancel()
 		})
 	case ENDPOINTS.IMAGE:
+		// TODO remove this. We dont need a timer for images, that doesnt make sense. 
+		// Images arent streamed back. Timers are only needed for streaming llm responses
 		r = r.WithContext(ctx)
 		timer = time.AfterFunc(5*time.Minute, func() {
 			cancel()
 		})
 	default:
-		c.log.Errorf("Unknown method: %s", method)		
+		// What is going on here, why are we handling the default case like this?
+		c.log.Errorf("Unknown method: %s", req.Endpoint)
 		r = r.WithContext(ctx)
 		cancel()
 	}
@@ -333,10 +351,8 @@ func queryMiners(c *Context, req []byte, method string, miner_uid *int, miner_ho
 
 	c.log.Infof("Miner: %s %s\n", miner.Hotkey, miner.Coldkey)
 
-	switch method {
-	case ENDPOINTS.COMPLETION:
-		fallthrough
-	case ENDPOINTS.CHAT:
+	switch req.Endpoint {
+	case ENDPOINTS.CHAT, ENDPOINTS.COMPLETION:
 		reader := bufio.NewScanner(res.Body)
 		finished := false
 		for reader.Scan() {
@@ -370,7 +386,7 @@ func queryMiners(c *Context, req []byte, method string, miner_uid *int, miner_ho
 		}
 		res.Body.Close()
 		if !finished {
-			if method == ENDPOINTS.CHAT {
+			if req.Endpoint == ENDPOINTS.CHAT {
 				return ResponseInfo{Miner: miner, Data: Data{Chat: Chat{ResponseTokens: tokens, TimeToFirstToken: timeToFirstToken, Responses: llmResponse}}, Success: false, Type: ENDPOINTS.CHAT}, nil
 			}
 			return ResponseInfo{Miner: miner, Data: Data{Completion: Completion{ResponseTokens: tokens, TimeToFirstToken: timeToFirstToken, Responses: llmResponse}}, Success: false, Type: ENDPOINTS.COMPLETION}, nil
@@ -379,7 +395,7 @@ func queryMiners(c *Context, req []byte, method string, miner_uid *int, miner_ho
 		responseBytes, err := io.ReadAll(res.Body)
 		if err != nil {
 			c.log.Errorf("Failed to read image response: %s", err.Error())
-		  return ResponseInfo{Miner: miner, Success: false, Type: ENDPOINTS.IMAGE}, nil
+			return ResponseInfo{Miner: miner, Success: false, Type: ENDPOINTS.IMAGE}, nil
 		}
 
 		json.Unmarshal(responseBytes, &imageResponse)
@@ -391,7 +407,7 @@ func queryMiners(c *Context, req []byte, method string, miner_uid *int, miner_ho
 	totalTime := int64(time.Since(start) / time.Millisecond)
 	c.log.Infof("Finished Request in %dms", totalTime)
 
-	switch method {
+	switch req.Endpoint {
 	case ENDPOINTS.IMAGE:
 		return ResponseInfo{
 			Miner:     miner,
@@ -472,8 +488,9 @@ func saveRequest(db *sql.DB, res ResponseInfo, req RequestInfo, logger *zap.Suga
 
 	_, err = db.Exec(`
 	INSERT INTO 
-		request (user_id, credits_used, request, response, model_id, uid, hotkey, coldkey, miner_address, endpoint, success, time_to_first_token, total_time, scored)
+		request (pub_id, user_id, credits_used, request, response, model_id, uid, hotkey, coldkey, miner_address, endpoint, success, time_to_first_token, total_time, scored)
 		VALUES	(?,       ?,            ?,       ?,        ?,        ?,   ?,      ?,       ?,             ?,        ?,       ?,                  ?,          ?)`,
+		req.Id,
 		req.UserId,
 		0,
 		string(req.Body),
