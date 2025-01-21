@@ -206,9 +206,16 @@ func queryMiners(c *Context, req RequestInfo) (ResponseInfo, error) {
 	var miner Miner
 
 	if len(req.MinerHost) != 0 {
-		// TODO create miner struct based on miner host. set coldkey, hotkey to
-		// blank strings and uid to -1
-		// miner = Miner{}
+		host := strings.TrimPrefix(req.MinerHost, "http://")
+		ip := strings.Split(host, ":")[0]
+		port, _ := strconv.Atoi(strings.Split(host, ":")[1])
+		miner = Miner {
+			Ip: ip,
+			Port: port,
+			Hotkey: "",
+			Coldkey: "",
+			Uid: -1,
+		}
 	}
 
 	// Only get miners from redis if we dont specify host
@@ -258,15 +265,7 @@ func queryMiners(c *Context, req RequestInfo) (ResponseInfo, error) {
 		return ResponseInfo{}, errors.New("unknown method")
 	}
 
-	// TODO This should not be an if else / dynamic. it should always be the 'else' case. We need
-	// to break apart MinerHost to its ip / port format and put it into a Miner object
-	// in the above TODO
-	var endpoint string
-	if req.MinerHost != "" {
-		endpoint = req.MinerHost + route
-	} else {
-		endpoint = "http://" + miner.Ip + ":" + fmt.Sprint(miner.Port) + route
-	}
+	endpoint := "http://" + miner.Ip + ":" + fmt.Sprint(miner.Port) + route
 
 	// start creation of signature
 	timestamp := time.Now().UnixMilli()
