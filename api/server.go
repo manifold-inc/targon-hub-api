@@ -109,7 +109,7 @@ func main() {
 			return cc.String(error.StatusCode, error.Err.Error())
 		}
 		cc.log.Infof("/api/chat/completions - %d\n", request.UserId)
-		res, err := queryMiners(cc, request.Body, ENDPOINTS.CHAT, request.Miner)
+		res, err := queryMiners(cc, request.Body, ENDPOINTS.CHAT, request.Miner, request.MinerHost)
 		go saveRequest(db, res, *request, cc.log)
 
 		if err != nil {
@@ -135,7 +135,7 @@ func main() {
 			return cc.String(error.StatusCode, error.Err.Error())
 		}
 		cc.log.Infof("/api/completions - %d\n", request.UserId)
-		res, err := queryMiners(cc, request.Body, ENDPOINTS.COMPLETION, request.Miner)
+		res, err := queryMiners(cc, request.Body, ENDPOINTS.COMPLETION, request.Miner, request.MinerHost)
 
 		go saveRequest(db, res, *request, cc.log)
 
@@ -156,15 +156,13 @@ func main() {
 		cc := c.(*Context)
 		defer cc.log.Sync()
 		request, err := preprocessOpenaiRequest(cc, db, ENDPOINTS.IMAGE)
-
 		if err != nil {
 			error := err.(*RequestError)
 			cc.log.Error(err.Error())
 			return cc.String(error.StatusCode, error.Err.Error())
 		}
-
 		cc.log.Infof("/api/images/generations - %d\n", request.UserId)
-		res, err := queryMiners(cc, request.Body, ENDPOINTS.IMAGE, request.Miner)
+		res, err := queryMiners(cc, request.Body, ENDPOINTS.IMAGE, request.Miner, request.MinerHost)
 
 		go saveRequest(db, res, *request, cc.log)
 
