@@ -477,7 +477,7 @@ func saveRequest(db *sql.DB, res ResponseInfo, req RequestInfo, logger *zap.Suga
 		req.UserId,
 		0,
 		string(req.Body),
-		string(responseJson),
+		NewNullString(string(responseJson)),
 		model_id,
 		res.Miner.Uid,
 		res.Miner.Hotkey,
@@ -495,5 +495,15 @@ func saveRequest(db *sql.DB, res ResponseInfo, req RequestInfo, logger *zap.Suga
 	if err != nil {
 		logger.Errorw("Failed to update", "error", err.Error())
 		return
+	}
+}
+
+func NewNullString(s string) sql.NullString {
+	if len(s) == 0 {
+		return sql.NullString{}
+	}
+	return sql.NullString{
+		String: s,
+		Valid:  true,
 	}
 }
