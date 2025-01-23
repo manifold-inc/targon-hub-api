@@ -117,4 +117,3 @@ var ROUTES = map[string]string{
 	ENDPOINTS.COMPLETION: "/v1/completions",
 	ENDPOINTS.IMAGE:      "/v1/images/generations",
 }
-

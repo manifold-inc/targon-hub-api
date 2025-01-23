@@ -37,3 +37,6 @@ history image:
 
 down:
   @docker compose down
+
+lint:
+  cd api && golangci-lint run .

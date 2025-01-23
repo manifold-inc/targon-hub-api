@@ -31,11 +31,14 @@ func preprocessOpenaiRequest(c *Context, db *sql.DB, endpoint string) (*RequestI
 	c.log = c.log.With("endpoint", endpoint)
 	c.Request().Header.Add("Content-Type", "application/json")
 	bearer := c.Request().Header.Get("Authorization")
-	miner := c.Request().Header.Get("X-Targon-Miner-Uid")
-	minerHost := c.Request().Header.Get("X-Targon-Miner-Ip")
 	c.Response().Header().Set("Cache-Control", "no-cache")
 	c.Response().Header().Set("Connection", "keep-alive")
 	c.Response().Header().Set("X-Accel-Buffering", "no")
+	var miner, minerHost string
+	if DEBUG {
+		miner = c.Request().Header.Get("X-Targon-Miner-Uid")
+		minerHost = c.Request().Header.Get("X-Targon-Miner-Ip")
+	}
 
 	// Conditional Header for LLM
 	if endpoint == ENDPOINTS.CHAT || endpoint == ENDPOINTS.COMPLETION {
@@ -49,12 +52,14 @@ func preprocessOpenaiRequest(c *Context, db *sql.DB, endpoint string) (*RequestI
 	err := db.QueryRow("SELECT user.credits, user.id FROM user INNER JOIN api_key ON user.id = api_key.user_id WHERE api_key.id = ?", strings.Split(bearer, " ")[1]).Scan(&credits, &userid)
 	if err == sql.ErrNoRows && !DEBUG {
 		c.log.Warn(bearer)
-		return nil, &RequestError{401, errors.New("Unauthorized")}
+		return nil, &RequestError{401, errors.New("unauthorized")}
 	}
 	if err != nil {
 		c.log.Errorf("Error fetching user data from api key: %v", err)
 		return nil, &RequestError{500, errors.New("internal server error")}
 	}
+	// add user id to future logs
+	c.log = c.log.With("user_id", userid)
 	var payload map[string]interface{}
 	body, _ := io.ReadAll(c.Request().Body)
 	err = json.Unmarshal(body, &payload)
@@ -126,6 +131,7 @@ func safeEnv(env string) string {
 	}
 	return res
 }
+
 func getEnv(env, fallback string) string {
 	if value, ok := os.LookupEnv(env); ok {
 		return value
@@ -151,9 +157,9 @@ func signMessage(message []byte, public string, private string) string {
 	copy(prik[:], data)
 
 	priv := schnorrkel.SecretKey{}
-	priv.Decode(prik)
+	_ = priv.Decode(prik)
 	pub := schnorrkel.PublicKey{}
-	pub.Decode(pubk)
+	_ = pub.Decode(pubk)
 
 	signingCtx := []byte("substrate")
 	signingTranscript := schnorrkel.NewSigningContext(signingCtx, message)
@@ -209,12 +215,12 @@ func queryMiners(c *Context, req RequestInfo) (ResponseInfo, error) {
 		host := strings.TrimPrefix(req.MinerHost, "http://")
 		ip := strings.Split(host, ":")[0]
 		port, _ := strconv.Atoi(strings.Split(host, ":")[1])
-		miner = Miner {
-			Ip: ip,
-			Port: port,
-			Hotkey: "",
+		miner = Miner{
+			Ip:      ip,
+			Port:    port,
+			Hotkey:  "",
 			Coldkey: "",
-			Uid: -1,
+			Uid:     -1,
 		}
 	}
 
@@ -255,7 +261,7 @@ func queryMiners(c *Context, req RequestInfo) (ResponseInfo, error) {
 	}
 	httpClient := http.Client{Transport: tr, Timeout: 2 * time.Minute}
 
-	var tokens int = 0
+	tokens := 0
 	var imageResponse Image
 	var llmResponse []map[string]interface{}
 	var timeToFirstToken int64
@@ -310,6 +316,7 @@ func queryMiners(c *Context, req RequestInfo) (ResponseInfo, error) {
 	r = r.WithContext(c.Request().Context())
 
 	ctx, cancel := context.WithCancel(c.Request().Context())
+	defer cancel()
 	var timer *time.Timer
 
 	if req.Endpoint == ENDPOINTS.CHAT || req.Endpoint == ENDPOINTS.COMPLETION {
@@ -317,7 +324,7 @@ func queryMiners(c *Context, req RequestInfo) (ResponseInfo, error) {
 		timer = time.AfterFunc(4*time.Second, func() {
 			cancel()
 		})
-	}	
+	}
 
 	res, err := httpClient.Do(r)
 	start := time.Now()
@@ -336,6 +343,7 @@ func queryMiners(c *Context, req RequestInfo) (ResponseInfo, error) {
 	}
 
 	c.log.Infof("Miner: %s %s\n", miner.Hotkey, miner.Coldkey)
+	var ri ResponseInfo
 
 	switch req.Endpoint {
 	case ENDPOINTS.CHAT, ENDPOINTS.COMPLETION:
@@ -377,6 +385,18 @@ func queryMiners(c *Context, req RequestInfo) (ResponseInfo, error) {
 			}
 			return ResponseInfo{Miner: miner, Data: Data{Completion: Completion{ResponseTokens: tokens, TimeToFirstToken: timeToFirstToken, Responses: llmResponse}}, Success: false, Type: ENDPOINTS.COMPLETION}, nil
 		}
+		ri = ResponseInfo{
+			Miner:   miner,
+			Success: true,
+
+			Type: req.Endpoint,
+		}
+		if req.Endpoint == ENDPOINTS.CHAT {
+			ri.Data = Data{Chat: Chat{Responses: llmResponse, ResponseTokens: tokens, TimeToFirstToken: timeToFirstToken}}
+		}
+		if req.Endpoint == ENDPOINTS.COMPLETION {
+			ri.Data = Data{Completion: Completion{Responses: llmResponse, ResponseTokens: tokens, TimeToFirstToken: timeToFirstToken}}
+		}
 	case ENDPOINTS.IMAGE:
 		responseBytes, err := io.ReadAll(res.Body)
 		if err != nil {
@@ -384,46 +404,26 @@ func queryMiners(c *Context, req RequestInfo) (ResponseInfo, error) {
 			return ResponseInfo{Miner: miner, Success: false, Type: ENDPOINTS.IMAGE}, nil
 		}
 
-		json.Unmarshal(responseBytes, &imageResponse)
+		err = json.Unmarshal(responseBytes, &imageResponse)
+		if err != nil {
+			c.log.Errorf("Failed decoding image json: %s", string(responseBytes))
+		}
 		res.Body.Close()
+		ri = ResponseInfo{
+			Miner:   miner,
+			Success: true,
+
+			Type: ENDPOINTS.IMAGE,
+			Data: Data{Image: imageResponse},
+		}
 	default:
 		return ResponseInfo{}, errors.New("unknown method")
 	}
 
 	totalTime := int64(time.Since(start) / time.Millisecond)
+	ri.TotalTime = totalTime
 	c.log.Infof("Finished Request in %dms", totalTime)
-
-	switch req.Endpoint {
-	case ENDPOINTS.IMAGE:
-		return ResponseInfo{
-			Miner:     miner,
-			Success:   true,
-			TotalTime: totalTime,
-
-			Type: ENDPOINTS.IMAGE,
-			Data: Data{Image: imageResponse},
-		}, nil
-	case ENDPOINTS.CHAT:
-		return ResponseInfo{
-			Miner:     miner,
-			Success:   true,
-			TotalTime: totalTime,
-
-			Type: ENDPOINTS.CHAT,
-			Data: Data{Chat: Chat{Responses: llmResponse, ResponseTokens: tokens, TimeToFirstToken: timeToFirstToken}},
-		}, nil
-	case ENDPOINTS.COMPLETION:
-		return ResponseInfo{
-			Miner:     miner,
-			Success:   true,
-			TotalTime: totalTime,
-
-			Type: ENDPOINTS.COMPLETION,
-			Data: Data{Completion: Completion{Responses: llmResponse, ResponseTokens: tokens, TimeToFirstToken: timeToFirstToken}},
-		}, nil
-	default:
-		return ResponseInfo{}, errors.New("unknown method")
-	}
+	return ri, nil
 }
 
 func saveRequest(db *sql.DB, res ResponseInfo, req RequestInfo, logger *zap.SugaredLogger) {
@@ -432,13 +432,17 @@ func saveRequest(db *sql.DB, res ResponseInfo, req RequestInfo, logger *zap.Suga
 		cpt      int
 	)
 	var bodyJson map[string]interface{}
-	json.Unmarshal(req.Body, &bodyJson)
+	err := json.Unmarshal(req.Body, &bodyJson)
+	if err != nil {
+		logger.Warnf("Failed unmasrhaling request body: %s", string(req.Body))
+		return
+	}
 	model, ok := bodyJson["model"]
 	if !ok {
 		logger.Error("No model in body")
 		return
 	}
-	err := db.QueryRow("SELECT id, cpt FROM model WHERE name = ?", model.(string)).Scan(&model_id, &cpt)
+	err = db.QueryRow("SELECT id, cpt FROM model WHERE name = ?", model.(string)).Scan(&model_id, &cpt)
 	if err != nil {
 		logger.Warnw("Failed to get model "+model.(string), "error", err.Error())
 		return
@@ -494,7 +498,6 @@ func saveRequest(db *sql.DB, res ResponseInfo, req RequestInfo, logger *zap.Suga
 		res.TotalTime,
 		req.Miner != nil,
 	)
-
 	if err != nil {
 		logger.Errorw("Failed to update", "error", err.Error())
 		return
