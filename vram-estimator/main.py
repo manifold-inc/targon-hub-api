@@ -3,7 +3,7 @@ from pydantic import BaseModel
 from fastapi import FastAPI
 from accelerate.commands import estimate
 
-from logconfig.logconfig import setupLogging
+from logconfig import setupLogging
 
 logger = setupLogging()
 

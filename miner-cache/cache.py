@@ -13,7 +13,7 @@ from typing import Any, Dict, List, Optional, Union
 import time
 from substrateinterface import Keypair
 import httpx
-from logconfig.logconfig import setupLogging
+from logconfig import setupLogging
 
 logger = setupLogging()
 
