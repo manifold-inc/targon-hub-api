@@ -13,9 +13,21 @@ from typing import Any, Dict, List, Optional, Union
 import time
 from substrateinterface import Keypair
 import httpx
+import csv
+
+
+def get_blocked_keys():
+    try:
+        with open("blocked_keys.txt", "r") as file:
+            text = file.read()
+            keys: List[str] = text.split("\n")
+            return [key.strip() for key in keys if len(key)]
+    except Exception:
+        return []
 
 
 async def sync_miners():
+    blocked_keys = get_blocked_keys()
     metagraph = subtensor.metagraph(netuid=4)
     non_zero = sum([1 for x in metagraph.incentive if x])
     indices = numpy.argsort(metagraph.incentive)[-non_zero:]
@@ -29,6 +41,8 @@ async def sync_miners():
     ]
     miner_models = {}
     for axon, uid in axons:
+        if axon.hotkey in blocked_keys or axon.coldkey in blocked_keys:
+            continue
         headers = generate_header(hotkey, b"", axon.hotkey)
         try:
             res = httpx.get(
@@ -100,8 +114,8 @@ if __name__ == "__main__":
         private_key=os.getenv("PRIVATE_KEY", ""),
     )
     subtensor = bt.subtensor("ws://subtensor.sybil.com:9944")
-    redis_host=os.getenv("REDIS_HOST", "cache")
-    redis_port=os.getenv("REDIS_PORT", 6379)
+    redis_host = os.getenv("REDIS_HOST", "cache")
+    redis_port = os.getenv("REDIS_PORT", 6379)
     r = Redis(host=redis_host, port=redis_port, decode_responses=True)
     while True:
         asyncio.run(sync_miners())
