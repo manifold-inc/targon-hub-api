@@ -13,8 +13,9 @@ from typing import Any, Dict, List, Optional, Union
 import time
 from substrateinterface import Keypair
 import httpx
-import csv
+from logconfig.logconfig import setupLogging
 
+logger = setupLogging()
 
 def get_blocked_keys():
     try:
@@ -28,6 +29,7 @@ def get_blocked_keys():
 
 async def sync_miners():
     blocked_keys = get_blocked_keys()
+    logger.info(f"Found {blocked_keys} keys")
     metagraph = subtensor.metagraph(netuid=4)
     non_zero = sum([1 for x in metagraph.incentive if x])
     indices = numpy.argsort(metagraph.incentive)[-non_zero:]
