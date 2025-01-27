@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
+	"time"
 
 	"github.com/aidarkhanov/nanoid"
 	_ "github.com/go-sql-driver/mysql"
@@ -183,5 +185,41 @@ func main() {
 			"b64_json": res.Data.Image,
 		})
 	})
+
+	e.GET("/v1/models", func(c echo.Context) error {
+		cc := c.(*Context)
+		defer cc.log.Sync()
+
+		rows, err := db.Query("SELECT name, created_at FROM model WHERE enabled = 1")
+		if err != nil {
+			cc.log.Error("Failed to get models from database: " + err.Error())
+			return c.String(500, "Failed to get models")
+		}
+		defer rows.Close()
+
+		models := make([]map[string]interface{}, 0)
+		for rows.Next() {
+			var name string
+			var createdAt time.Time
+
+			if err := rows.Scan(&name, &createdAt); err != nil {
+				cc.log.Error("Error scanning model row: " + err.Error())
+				continue
+			}
+
+			models = append(models, map[string]interface{}{
+				"id":       name,
+				"object":   "model",
+				"created":  createdAt.Unix(),
+				"owned_by": strings.Split(name, "/")[0],
+			})
+		}
+
+		return c.JSON(200, map[string]interface{}{
+			"object": "list",
+			"data":   models,
+		})
+	})
+
 	e.Logger.Fatal(e.Start(":80"))
 }
