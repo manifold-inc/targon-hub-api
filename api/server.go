@@ -192,6 +192,22 @@ func main() {
 
 		cc.log.Info("Fetching models")
 
+		// Log DSN (but mask password)
+		dsnParts := strings.Split(DSN, ":")
+		if len(dsnParts) > 1 {
+			maskedDSN := dsnParts[0] + ":****" + strings.Join(dsnParts[2:], ":")
+			cc.log.Infow("Database connection info", "dsn", maskedDSN)
+		}
+
+		// Try a simple COUNT query first
+		var count int
+		err := db.QueryRow("SELECT COUNT(*) FROM model WHERE enabled = 1").Scan(&count)
+		if err != nil {
+			cc.log.Error("Failed to get count: " + err.Error())
+			return c.String(500, "Failed to get count")
+		}
+		cc.log.Infof("Total enabled models in database: %d", count)
+
 		rows, err := db.Query("SELECT name, created_at FROM model WHERE enabled = 1")
 		if err != nil {
 			cc.log.Error("Failed to get models from database: " + err.Error())
@@ -200,7 +216,7 @@ func main() {
 		defer rows.Close()
 
 		models := make([]map[string]interface{}, 0)
-		count := 0
+		count = 0
 		for rows.Next() {
 			var name string
 			var createdAt time.Time
