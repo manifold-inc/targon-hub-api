@@ -190,6 +190,8 @@ func main() {
 		cc := c.(*Context)
 		defer cc.log.Sync()
 
+		cc.log.Info("Fetching models")
+
 		rows, err := db.Query("SELECT name, created_at FROM model WHERE enabled = 1")
 		if err != nil {
 			cc.log.Error("Failed to get models from database: " + err.Error())
@@ -198,6 +200,7 @@ func main() {
 		defer rows.Close()
 
 		models := make([]map[string]interface{}, 0)
+		count := 0
 		for rows.Next() {
 			var name string
 			var createdAt time.Time
@@ -206,6 +209,13 @@ func main() {
 				cc.log.Error("Error scanning model row: " + err.Error())
 				continue
 			}
+			count++
+
+			// Log each row's data
+			cc.log.Infow("Found model",
+				"name", name,
+				"created_at", createdAt,
+			)
 
 			models = append(models, map[string]interface{}{
 				"id":       name,
@@ -214,6 +224,16 @@ func main() {
 				"owned_by": strings.Split(name, "/")[0],
 			})
 		}
+
+		cc.log.Infof("Found %d models", count)
+
+		if err = rows.Err(); err != nil {
+			cc.log.Error("Error iterating over rows: " + err.Error())
+			return c.String(500, "Error reading models")
+		}
+
+		// Log the final models array
+		cc.log.Infow("Returning models", "models", models)
 
 		return c.JSON(200, map[string]interface{}{
 			"object": "list",
