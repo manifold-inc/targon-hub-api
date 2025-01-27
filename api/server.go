@@ -203,16 +203,8 @@ func main() {
 		models := make([]map[string]interface{}, 0)
 		for rows.Next() {
 			var name, createdAtStr string
-			if err := rows.Scan(&name, &createdAtStr); err != nil {
-				cc.log.Errorf("Failed to scan model row: %v", err)
-				continue
-			}
-
-			createdAt, err := time.Parse("2006-01-02 15:04:05", createdAtStr)
-			if err != nil {
-				cc.log.Errorf("Failed to parse time %s: %v", createdAtStr, err)
-				continue
-			}
+			rows.Scan(&name, &createdAtStr)
+			createdAt, _ := time.Parse("2006-01-02 15:04:05", createdAtStr)
 			models = append(models, map[string]interface{}{
 				"id":       name,
 				"object":   "model",
