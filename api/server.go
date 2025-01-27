@@ -190,49 +190,29 @@ func main() {
 		cc := c.(*Context)
 		defer cc.log.Sync()
 
-		cc.log.Info("Fetching models")
-
-		// Log DSN (but mask password)
-		dsnParts := strings.Split(DSN, ":")
-		if len(dsnParts) > 1 {
-			maskedDSN := dsnParts[0] + ":****" + strings.Join(dsnParts[2:], ":")
-			cc.log.Infow("Database connection info", "dsn", maskedDSN)
-		}
-
-		// Try a simple COUNT query first
-		var count int
-		err := db.QueryRow("SELECT COUNT(*) FROM model WHERE enabled = 1").Scan(&count)
+		rows, err := db.Query(`
+			SELECT name, DATE_FORMAT(created_at, '%Y-%m-%d %H:%i:%s') as created_at 
+			FROM model WHERE enabled = 1
+		`)
 		if err != nil {
-			cc.log.Error("Failed to get count: " + err.Error())
-			return c.String(500, "Failed to get count")
-		}
-		cc.log.Infof("Total enabled models in database: %d", count)
-
-		rows, err := db.Query("SELECT name, created_at FROM model WHERE enabled = 1")
-		if err != nil {
-			cc.log.Error("Failed to get models from database: " + err.Error())
+			cc.log.Error("Failed to get models: " + err.Error())
 			return c.String(500, "Failed to get models")
 		}
 		defer rows.Close()
 
 		models := make([]map[string]interface{}, 0)
-		count = 0
 		for rows.Next() {
-			var name string
-			var createdAt time.Time
-
-			if err := rows.Scan(&name, &createdAt); err != nil {
-				cc.log.Error("Error scanning model row: " + err.Error())
+			var name, createdAtStr string
+			if err := rows.Scan(&name, &createdAtStr); err != nil {
+				cc.log.Errorf("Failed to scan model row: %v", err)
 				continue
 			}
-			count++
 
-			// Log each row's data
-			cc.log.Infow("Found model",
-				"name", name,
-				"created_at", createdAt,
-			)
-
+			createdAt, err := time.Parse("2006-01-02 15:04:05", createdAtStr)
+			if err != nil {
+				cc.log.Errorf("Failed to parse time %s: %v", createdAtStr, err)
+				continue
+			}
 			models = append(models, map[string]interface{}{
 				"id":       name,
 				"object":   "model",
@@ -240,16 +220,6 @@ func main() {
 				"owned_by": strings.Split(name, "/")[0],
 			})
 		}
-
-		cc.log.Infof("Found %d models", count)
-
-		if err = rows.Err(); err != nil {
-			cc.log.Error("Error iterating over rows: " + err.Error())
-			return c.String(500, "Error reading models")
-		}
-
-		// Log the final models array
-		cc.log.Infow("Returning models", "models", models)
 
 		return c.JSON(200, map[string]interface{}{
 			"object": "list",
