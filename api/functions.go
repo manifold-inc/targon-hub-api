@@ -87,22 +87,39 @@ func preprocessOpenaiRequest(c *Context, db *sql.DB, endpoint string) (*RequestI
 			return nil, &RequestError{400, errors.New("targon currently only supports streaming requests")}
 		}
 
-		if _, ok := payload["seed"]; !ok {
-			payload["seed"] = rand.Intn(100000)
-		}
-
+		// Core parameters - set defaults only if not provided
 		if _, ok := payload["temperature"]; !ok {
-			payload["temperature"] = 1
+			payload["temperature"] = 1.0
 		}
-
+		if _, ok := payload["top_p"]; !ok {
+			payload["top_p"] = 1.0
+		}
 		if _, ok := payload["max_tokens"]; !ok {
 			payload["max_tokens"] = 512
 		} else if credits < int64(payload["max_tokens"].(float64)) {
 			return nil, &RequestError{403, errors.New("out of credits")}
 		}
+		if _, ok := payload["stop"]; !ok {
+			payload["stop"] = []string{}
+		}
+		if _, ok := payload["seed"]; !ok {
+			payload["seed"] = rand.Intn(100000)
+		}
 
+		// Required for our system
 		if logprobs, ok := payload["logprobs"]; !ok || !logprobs.(bool) {
 			payload["logprobs"] = true
+		}
+
+		// Endpoint-specific parameters
+		if endpoint == ENDPOINTS.CHAT {
+			if _, ok := payload["messages"]; !ok {
+				return nil, &RequestError{400, errors.New("messages is required for chat completions")}
+			}
+		} else if endpoint == ENDPOINTS.COMPLETION {
+			if _, ok := payload["prompt"]; !ok {
+				return nil, &RequestError{400, errors.New("prompt is required for completions")}
+			}
 		}
 	}
 
