@@ -13,9 +13,23 @@ from typing import Any, Dict, List, Optional, Union
 import time
 from substrateinterface import Keypair
 import httpx
+from logconfig import setupLogging
+
+logger = setupLogging()
+
+def get_blocked_keys():
+    try:
+        with open("blocked_keys.txt", "r") as file:
+            text = file.read()
+            keys: List[str] = text.split("\n")
+            return [key.strip() for key in keys if len(key)]
+    except Exception:
+        return []
 
 
 async def sync_miners():
+    blocked_keys = get_blocked_keys()
+    logger.info(f"Found {blocked_keys} keys")
     metagraph = subtensor.metagraph(netuid=4)
     non_zero = sum([1 for x in metagraph.incentive if x])
     indices = numpy.argsort(metagraph.incentive)[-non_zero:]
@@ -29,6 +43,8 @@ async def sync_miners():
     ]
     miner_models = {}
     for axon, uid in axons:
+        if axon.hotkey in blocked_keys or axon.coldkey in blocked_keys:
+            continue
         headers = generate_header(hotkey, b"", axon.hotkey)
         try:
             res = httpx.get(
@@ -99,9 +115,9 @@ if __name__ == "__main__":
         public_key=os.getenv("PUBLIC_KEY", ""),
         private_key=os.getenv("PRIVATE_KEY", ""),
     )
-    subtensor = bt.subtensor("ws://subtensor.sybil.com:9944")
-    redis_host=os.getenv("REDIS_HOST", "cache")
-    redis_port=os.getenv("REDIS_PORT", 6379)
+    subtensor = bt.subtensor("wss://entrypoint-finney.opentensor.ai:443")
+    redis_host = os.getenv("REDIS_HOST", "cache")
+    redis_port = os.getenv("REDIS_PORT", 6379)
     r = Redis(host=redis_host, port=redis_port, decode_responses=True)
     while True:
         asyncio.run(sync_miners())

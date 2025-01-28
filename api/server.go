@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
+	"time"
 
 	"github.com/aidarkhanov/nanoid"
 	_ "github.com/go-sql-driver/mysql"
@@ -25,15 +27,17 @@ var (
 	client *redis.Client
 )
 
-var Reset = "\033[0m"
-var Red = "\033[31m"
-var Green = "\033[32m"
-var Yellow = "\033[33m"
-var Blue = "\033[34m"
-var Purple = "\033[35m"
-var Cyan = "\033[36m"
-var Gray = "\033[37m"
-var White = "\033[97m"
+var (
+	Reset  = "\033[0m"
+	Red    = "\033[31m"
+	Green  = "\033[32m"
+	Yellow = "\033[33m"
+	Blue   = "\033[34m"
+	Purple = "\033[35m"
+	Cyan   = "\033[36m"
+	Gray   = "\033[37m"
+	White  = "\033[97m"
+)
 
 type Context struct {
 	echo.Context
@@ -80,7 +84,9 @@ func main() {
 	e.Use(middleware.RecoverWithConfig(middleware.RecoverConfig{
 		StackSize: 1 << 10, // 1 KB
 		LogErrorFunc: func(c echo.Context, err error, stack []byte) error {
-			defer sugar.Sync()
+			defer func() {
+				_ = sugar.Sync()
+			}()
 			sugar.Errorw("Api Panic", "error", err.Error())
 			return c.String(500, "Internal Server Error")
 		},
@@ -101,15 +107,16 @@ func main() {
 
 	e.POST("/v1/chat/completions", func(c echo.Context) error {
 		cc := c.(*Context)
-		defer cc.log.Sync()
+		defer func() {
+			_ = cc.log.Sync()
+		}()
 		request, err := preprocessOpenaiRequest(cc, db, ENDPOINTS.CHAT)
 		if err != nil {
 			error := err.(*RequestError)
 			cc.log.Error(err.Error())
 			return cc.String(error.StatusCode, error.Err.Error())
 		}
-		cc.log.Infof("/api/chat/completions - %d\n", request.UserId)
-		res, err := queryMiners(cc, request.Body, ENDPOINTS.CHAT, request.Miner)
+		res, err := queryMiners(cc, *request)
 		go saveRequest(db, res, *request, cc.log)
 
 		if err != nil {
@@ -127,15 +134,16 @@ func main() {
 
 	e.POST("/v1/completions", func(c echo.Context) error {
 		cc := c.(*Context)
-		defer cc.log.Sync()
+		defer func() {
+			_ = cc.log.Sync()
+		}()
 		request, err := preprocessOpenaiRequest(cc, db, ENDPOINTS.COMPLETION)
 		if err != nil {
 			error := err.(*RequestError)
 			cc.log.Error(err.Error())
 			return cc.String(error.StatusCode, error.Err.Error())
 		}
-		cc.log.Infof("/api/completions - %d\n", request.UserId)
-		res, err := queryMiners(cc, request.Body, ENDPOINTS.COMPLETION, request.Miner)
+		res, err := queryMiners(cc, *request)
 
 		go saveRequest(db, res, *request, cc.log)
 
@@ -154,17 +162,16 @@ func main() {
 
 	e.POST("/v1/images/generations", func(c echo.Context) error {
 		cc := c.(*Context)
-		defer cc.log.Sync()
+		defer func() {
+			_ = cc.log.Sync()
+		}()
 		request, err := preprocessOpenaiRequest(cc, db, ENDPOINTS.IMAGE)
-
 		if err != nil {
 			error := err.(*RequestError)
 			cc.log.Error(err.Error())
 			return cc.String(error.StatusCode, error.Err.Error())
 		}
-
-		cc.log.Infof("/api/images/generations - %d\n", request.UserId)
-		res, err := queryMiners(cc, request.Body, ENDPOINTS.IMAGE, request.Miner)
+		res, err := queryMiners(cc, *request)
 
 		go saveRequest(db, res, *request, cc.log)
 
@@ -183,5 +190,55 @@ func main() {
 			"b64_json": res.Data.Image,
 		})
 	})
+
+	e.GET("/v1/models", func(c echo.Context) error {
+		cc := c.(*Context)
+		defer func() {
+			_ = cc.log.Sync()
+		}()
+
+		rows, err := db.Query(`
+			SELECT name, DATE_FORMAT(created_at, '%Y-%m-%d %H:%i:%s') as created_at 
+			FROM model WHERE enabled = 1
+		`)
+		if err != nil {
+			cc.log.Error("Failed to get models: " + err.Error())
+			return c.String(500, "Failed to get models")
+		}
+		defer rows.Close()
+
+		var models []Model
+		for rows.Next() {
+			var model Model
+			var createdAtStr string
+			if err := rows.Scan(&model.ID, &createdAtStr); err != nil {
+				cc.log.Error("Failed to scan model row: " + err.Error())
+				return c.String(500, "Failed to get models")
+			}
+
+			createdAt, err := time.Parse("2006-01-02 15:04:05", createdAtStr)
+			if err != nil {
+				cc.log.Error("Failed to parse created_at: " + err.Error())
+				return c.String(500, "Failed to get models")
+			}
+
+			model.Object = "model"
+			model.Created = createdAt.Unix()
+			model.OwnedBy = strings.Split(model.ID, "/")[0]
+
+			models = append(models, model)
+		}
+
+		if err = rows.Err(); err != nil {
+			cc.log.Error("Error iterating model rows: " + err.Error())
+			return c.String(500, "Failed to get models")
+		}
+
+		return c.JSON(200, ModelList{
+			Object: "list",
+			Data:   models,
+		})
+	})
+
 	e.Logger.Fatal(e.Start(":80"))
 }
