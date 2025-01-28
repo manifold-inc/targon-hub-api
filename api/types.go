@@ -63,6 +63,7 @@ type RequestInfo struct {
 	Body            []byte
 	Endpoint        string
 	Miner           *int
+	MinerHost       string
 	Id              string
 }
 

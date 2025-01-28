@@ -27,15 +27,17 @@ var (
 	client *redis.Client
 )
 
-var Reset = "\033[0m"
-var Red = "\033[31m"
-var Green = "\033[32m"
-var Yellow = "\033[33m"
-var Blue = "\033[34m"
-var Purple = "\033[35m"
-var Cyan = "\033[36m"
-var Gray = "\033[37m"
-var White = "\033[97m"
+var (
+	Reset  = "\033[0m"
+	Red    = "\033[31m"
+	Green  = "\033[32m"
+	Yellow = "\033[33m"
+	Blue   = "\033[34m"
+	Purple = "\033[35m"
+	Cyan   = "\033[36m"
+	Gray   = "\033[37m"
+	White  = "\033[97m"
+)
 
 type Context struct {
 	echo.Context
@@ -82,7 +84,9 @@ func main() {
 	e.Use(middleware.RecoverWithConfig(middleware.RecoverConfig{
 		StackSize: 1 << 10, // 1 KB
 		LogErrorFunc: func(c echo.Context, err error, stack []byte) error {
-			defer sugar.Sync()
+			defer func() {
+				_ = sugar.Sync()
+			}()
 			sugar.Errorw("Api Panic", "error", err.Error())
 			return c.String(500, "Internal Server Error")
 		},
@@ -103,15 +107,16 @@ func main() {
 
 	e.POST("/v1/chat/completions", func(c echo.Context) error {
 		cc := c.(*Context)
-		defer cc.log.Sync()
+		defer func() {
+			_ = cc.log.Sync()
+		}()
 		request, err := preprocessOpenaiRequest(cc, db, ENDPOINTS.CHAT)
 		if err != nil {
 			error := err.(*RequestError)
 			cc.log.Error(err.Error())
 			return cc.String(error.StatusCode, error.Err.Error())
 		}
-		cc.log.Infof("/api/chat/completions - %d\n", request.UserId)
-		res, err := queryMiners(cc, request.Body, ENDPOINTS.CHAT, request.Miner)
+		res, err := queryMiners(cc, *request)
 		go saveRequest(db, res, *request, cc.log)
 
 		if err != nil {
@@ -129,15 +134,16 @@ func main() {
 
 	e.POST("/v1/completions", func(c echo.Context) error {
 		cc := c.(*Context)
-		defer cc.log.Sync()
+		defer func() {
+			_ = cc.log.Sync()
+		}()
 		request, err := preprocessOpenaiRequest(cc, db, ENDPOINTS.COMPLETION)
 		if err != nil {
 			error := err.(*RequestError)
 			cc.log.Error(err.Error())
 			return cc.String(error.StatusCode, error.Err.Error())
 		}
-		cc.log.Infof("/api/completions - %d\n", request.UserId)
-		res, err := queryMiners(cc, request.Body, ENDPOINTS.COMPLETION, request.Miner)
+		res, err := queryMiners(cc, *request)
 
 		go saveRequest(db, res, *request, cc.log)
 
@@ -156,17 +162,16 @@ func main() {
 
 	e.POST("/v1/images/generations", func(c echo.Context) error {
 		cc := c.(*Context)
-		defer cc.log.Sync()
+		defer func() {
+			_ = cc.log.Sync()
+		}()
 		request, err := preprocessOpenaiRequest(cc, db, ENDPOINTS.IMAGE)
-
 		if err != nil {
 			error := err.(*RequestError)
 			cc.log.Error(err.Error())
 			return cc.String(error.StatusCode, error.Err.Error())
 		}
-
-		cc.log.Infof("/api/images/generations - %d\n", request.UserId)
-		res, err := queryMiners(cc, request.Body, ENDPOINTS.IMAGE, request.Miner)
+		res, err := queryMiners(cc, *request)
 
 		go saveRequest(db, res, *request, cc.log)
 

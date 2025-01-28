@@ -3,6 +3,10 @@ from pydantic import BaseModel
 from fastapi import FastAPI
 from accelerate.commands import estimate
 
+from logconfig import setupLogging
+
+logger = setupLogging()
+
 
 def bytes_to_mib(bytes_value):
     mib_value = bytes_value / (1024**2)  # 1024^2 = 1,048,576
@@ -17,7 +21,7 @@ def estimate_max_size(model_name, lib):
         )
     except (RuntimeError, OSError) as e:
         library = estimate.check_has_model(e)
-        print(
+        logger.error(
             f"Tried to load `{model_name}` with `{library}` but a possible model to load was not found inside the repo."
         )
         return None
