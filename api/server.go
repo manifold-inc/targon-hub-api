@@ -200,22 +200,36 @@ func main() {
 		}
 		defer rows.Close()
 
-		models := make([]map[string]interface{}, 0)
+		var models []Model
 		for rows.Next() {
-			var name, createdAtStr string
-			rows.Scan(&name, &createdAtStr)
-			createdAt, _ := time.Parse("2006-01-02 15:04:05", createdAtStr)
-			models = append(models, map[string]interface{}{
-				"id":       name,
-				"object":   "model",
-				"created":  createdAt.Unix(),
-				"owned_by": strings.Split(name, "/")[0],
-			})
+			var model Model
+			var createdAtStr string
+			if err := rows.Scan(&model.ID, &createdAtStr); err != nil {
+				cc.log.Error("Failed to scan model row: " + err.Error())
+				return c.String(500, "Failed to get models")
+			}
+
+			createdAt, err := time.Parse("2006-01-02 15:04:05", createdAtStr)
+			if err != nil {
+				cc.log.Error("Failed to parse created_at: " + err.Error())
+				return c.String(500, "Failed to get models")
+			}
+
+			model.Object = "model"
+			model.Created = createdAt.Unix()
+			model.OwnedBy = strings.Split(model.ID, "/")[0]
+
+			models = append(models, model)
 		}
 
-		return c.JSON(200, map[string]interface{}{
-			"object": "list",
-			"data":   models,
+		if err = rows.Err(); err != nil {
+			cc.log.Error("Error iterating model rows: " + err.Error())
+			return c.String(500, "Failed to get models")
+		}
+
+		return c.JSON(200, ModelList{
+			Object: "list",
+			Data:   models,
 		})
 	})
 
