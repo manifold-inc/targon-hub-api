@@ -243,6 +243,7 @@ func queryMiners(c *Context, req []byte, method string, miner_uid *int) (Respons
 	var timeToFirstToken int64
 	var promptTokens int
 	var completionTokens int
+	var usageInfo Usage
 
 	route, ok := ROUTES[method]
 	if !ok {
@@ -362,7 +363,7 @@ func queryMiners(c *Context, req []byte, method string, miner_uid *int) (Respons
 		}
 		res.Body.Close()
 
-		usageInfo := Usage{
+		usageInfo = Usage{
 			PromptTokens:     promptTokens,
 			CompletionTokens: completionTokens,
 			TotalTokens:      promptTokens + completionTokens,
