@@ -87,18 +87,25 @@ func preprocessOpenaiRequest(c *Context, db *sql.DB, endpoint string) (*RequestI
 			return nil, &RequestError{400, errors.New("targon currently only supports streaming requests")}
 		}
 
-		if _, ok := payload["seed"]; !ok {
-			payload["seed"] = rand.Intn(100000)
+		if _, ok := payload["max_tokens"]; !ok {
+			payload["max_tokens"] = 512
+		} else if credits < int64(payload["max_tokens"].(float64)) {
+			return nil, &RequestError{403, errors.New("out of credits")}
 		}
 
 		if _, ok := payload["temperature"]; !ok {
 			payload["temperature"] = 1
 		}
+		if _, ok := payload["top_p"]; !ok {
+			payload["top_p"] = 1
+		}
 
-		if _, ok := payload["max_tokens"]; !ok {
-			payload["max_tokens"] = 512
-		} else if credits < int64(payload["max_tokens"].(float64)) {
-			return nil, &RequestError{403, errors.New("out of credits")}
+		if _, ok := payload["stop"]; !ok {
+			payload["stop"] = []string{"\n"}
+		}
+
+		if _, ok := payload["seed"]; !ok {
+			payload["seed"] = rand.Intn(100000)
 		}
 
 		if logprobs, ok := payload["logprobs"]; !ok || !logprobs.(bool) {
