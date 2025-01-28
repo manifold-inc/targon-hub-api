@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
+	"time"
 
 	"github.com/aidarkhanov/nanoid"
 	_ "github.com/go-sql-driver/mysql"
@@ -188,5 +190,53 @@ func main() {
 			"b64_json": res.Data.Image,
 		})
 	})
+
+	e.GET("/v1/models", func(c echo.Context) error {
+		cc := c.(*Context)
+		defer cc.log.Sync()
+
+		rows, err := db.Query(`
+			SELECT name, DATE_FORMAT(created_at, '%Y-%m-%d %H:%i:%s') as created_at 
+			FROM model WHERE enabled = 1
+		`)
+		if err != nil {
+			cc.log.Error("Failed to get models: " + err.Error())
+			return c.String(500, "Failed to get models")
+		}
+		defer rows.Close()
+
+		var models []Model
+		for rows.Next() {
+			var model Model
+			var createdAtStr string
+			if err := rows.Scan(&model.ID, &createdAtStr); err != nil {
+				cc.log.Error("Failed to scan model row: " + err.Error())
+				return c.String(500, "Failed to get models")
+			}
+
+			createdAt, err := time.Parse("2006-01-02 15:04:05", createdAtStr)
+			if err != nil {
+				cc.log.Error("Failed to parse created_at: " + err.Error())
+				return c.String(500, "Failed to get models")
+			}
+
+			model.Object = "model"
+			model.Created = createdAt.Unix()
+			model.OwnedBy = strings.Split(model.ID, "/")[0]
+
+			models = append(models, model)
+		}
+
+		if err = rows.Err(); err != nil {
+			cc.log.Error("Error iterating model rows: " + err.Error())
+			return c.String(500, "Failed to get models")
+		}
+
+		return c.JSON(200, ModelList{
+			Object: "list",
+			Data:   models,
+		})
+	})
+
 	e.Logger.Fatal(e.Start(":80"))
 }
