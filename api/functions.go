@@ -241,6 +241,8 @@ func queryMiners(c *Context, req []byte, method string, miner_uid *int) (Respons
 	var imageResponse Image
 	var llmResponse []map[string]interface{}
 	var timeToFirstToken int64
+	var promptTokens int
+	var completionTokens int
 
 	route, ok := ROUTES[method]
 	if !ok {
@@ -349,15 +351,52 @@ func queryMiners(c *Context, req []byte, method string, miner_uid *int) (Respons
 						continue
 					}
 					llmResponse = append(llmResponse, response)
+
+					// Extract usage from response if present
+					if usage, ok := response["usage"].(map[string]interface{}); ok {
+						promptTokens = int(usage["prompt_tokens"].(float64))
+						completionTokens = int(usage["completion_tokens"].(float64))
+					}
 				}
 			}
 		}
 		res.Body.Close()
+
+		usageInfo := Usage{
+			PromptTokens:     promptTokens,
+			CompletionTokens: completionTokens,
+			TotalTokens:      promptTokens + completionTokens,
+		}
+
 		if !finished {
 			if method == ENDPOINTS.CHAT {
-				return ResponseInfo{Miner: miner, Data: Data{Chat: Chat{ResponseTokens: tokens, TimeToFirstToken: timeToFirstToken, Responses: llmResponse}}, Success: false, Type: ENDPOINTS.CHAT}, nil
+				return ResponseInfo{
+					Miner: miner,
+					Data: Data{
+						Chat: Chat{
+							ResponseTokens:   tokens,
+							TimeToFirstToken: timeToFirstToken,
+							Responses:        llmResponse,
+							Usage:            usageInfo,
+						},
+					},
+					Success: false,
+					Type:    ENDPOINTS.CHAT,
+				}, nil
 			}
-			return ResponseInfo{Miner: miner, Data: Data{Completion: Completion{ResponseTokens: tokens, TimeToFirstToken: timeToFirstToken, Responses: llmResponse}}, Success: false, Type: ENDPOINTS.COMPLETION}, nil
+			return ResponseInfo{
+				Miner: miner,
+				Data: Data{
+					Completion: Completion{
+						ResponseTokens:   tokens,
+						TimeToFirstToken: timeToFirstToken,
+						Responses:        llmResponse,
+						Usage:            usageInfo,
+					},
+				},
+				Success: false,
+				Type:    ENDPOINTS.COMPLETION,
+			}, nil
 		}
 	case ENDPOINTS.IMAGE:
 		responseBytes, err := io.ReadAll(res.Body)
@@ -392,7 +431,14 @@ func queryMiners(c *Context, req []byte, method string, miner_uid *int) (Respons
 			TotalTime: totalTime,
 
 			Type: ENDPOINTS.CHAT,
-			Data: Data{Chat: Chat{Responses: llmResponse, ResponseTokens: tokens, TimeToFirstToken: timeToFirstToken}},
+			Data: Data{
+				Chat: Chat{
+					Responses:        llmResponse,
+					ResponseTokens:   tokens,
+					TimeToFirstToken: timeToFirstToken,
+					Usage:            usageInfo,
+				},
+			},
 		}, nil
 	case ENDPOINTS.COMPLETION:
 		return ResponseInfo{
@@ -401,7 +447,14 @@ func queryMiners(c *Context, req []byte, method string, miner_uid *int) (Respons
 			TotalTime: totalTime,
 
 			Type: ENDPOINTS.COMPLETION,
-			Data: Data{Completion: Completion{Responses: llmResponse, ResponseTokens: tokens, TimeToFirstToken: timeToFirstToken}},
+			Data: Data{
+				Completion: Completion{
+					Responses:        llmResponse,
+					ResponseTokens:   tokens,
+					TimeToFirstToken: timeToFirstToken,
+					Usage:            usageInfo,
+				},
+			},
 		}, nil
 	default:
 		return ResponseInfo{}, errors.New("unknown method")
@@ -438,14 +491,17 @@ func saveRequest(db *sql.DB, res ResponseInfo, req RequestInfo, logger *zap.Suga
 	//}
 
 	var responseJson []byte
+	var usageJson []byte
 	var timeForFirstToken int64 = 0
 	switch res.Type {
 	case ENDPOINTS.CHAT:
 		timeForFirstToken = res.Data.Chat.TimeToFirstToken
 		responseJson, err = json.Marshal(res.Data.Chat.Responses)
+		usageJson, _ = json.Marshal(res.Data.Chat.Usage)
 	case ENDPOINTS.COMPLETION:
 		timeForFirstToken = res.Data.Chat.TimeToFirstToken
 		responseJson, err = json.Marshal(res.Data.Completion.Responses)
+		usageJson, _ = json.Marshal(res.Data.Completion.Usage)
 	case ENDPOINTS.IMAGE:
 		responseJson, err = json.Marshal(res.Data.Image)
 	}
@@ -456,8 +512,8 @@ func saveRequest(db *sql.DB, res ResponseInfo, req RequestInfo, logger *zap.Suga
 
 	_, err = db.Exec(`
 	INSERT INTO 
-		request (pub_id, user_id, credits_used, request, response, model_id, uid, hotkey, coldkey, miner_address, endpoint, success, time_to_first_token, total_time, scored)
-		VALUES	(?,      ?,       ?,            ?,       ?,        ?,        ?,   ?,      ?,       ?,             ?,        ?,       ?,                  ?,          ?)`,
+		request (pub_id, user_id, credits_used, request, response, model_id, uid, hotkey, coldkey, miner_address, endpoint, success, time_to_first_token, total_time, scored, usage)
+		VALUES	(?,      ?,       ?,            ?,       ?,        ?,        ?,   ?,      ?,       ?,             ?,        ?,       ?,                  ?,          ?,      ?)`,
 		req.Id,
 		req.UserId,
 		0,
@@ -475,6 +531,7 @@ func saveRequest(db *sql.DB, res ResponseInfo, req RequestInfo, logger *zap.Suga
 		timeForFirstToken,
 		res.TotalTime,
 		req.Miner != nil,
+		NewNullString(string(usageJson)),
 	)
 
 	if err != nil {

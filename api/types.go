@@ -82,16 +82,24 @@ type Data struct {
 	Completion Completion
 }
 
+type Usage struct {
+	PromptTokens     int `json:"prompt_tokens"`
+	CompletionTokens int `json:"completion_tokens"`
+	TotalTokens      int `json:"total_tokens"`
+}
+
 type Completion struct {
 	TimeToFirstToken int64
 	ResponseTokens   int
 	Responses        []map[string]interface{}
+	Usage            Usage
 }
 
 type Chat struct {
 	TimeToFirstToken int64
 	ResponseTokens   int
 	Responses        []map[string]interface{}
+	Usage            Usage
 }
 
 type Image struct {
@@ -116,4 +124,3 @@ var ROUTES = map[string]string{
 	ENDPOINTS.COMPLETION: "/v1/completions",
 	ENDPOINTS.IMAGE:      "/v1/images/generations",
 }
-
