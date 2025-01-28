@@ -278,13 +278,10 @@ func queryMiners(c *Context, req RequestInfo) (ResponseInfo, error) {
 	}
 	httpClient := http.Client{Transport: tr, Timeout: 2 * time.Minute}
 
-	tokens := 0
+	var tokens int
 	var imageResponse Image
 	var llmResponse []map[string]interface{}
 	var timeToFirstToken int64
-	var promptTokens int
-	var completionTokens int
-	var usageInfo Usage
 
 	route, ok := ROUTES[req.Endpoint]
 	if !ok {
@@ -380,7 +377,7 @@ func queryMiners(c *Context, req RequestInfo) (ResponseInfo, error) {
 				c.Response().Flush()
 				if token == "data: [DONE]" {
 					finished = true
-					break
+					continue
 				}
 				token, found := strings.CutPrefix(token, "data: ")
 				if found {
@@ -395,22 +392,10 @@ func queryMiners(c *Context, req RequestInfo) (ResponseInfo, error) {
 						continue
 					}
 					llmResponse = append(llmResponse, response)
-
-					// Extract usage from response if present
-					if usage, ok := response["usage"].(map[string]interface{}); ok {
-						promptTokens = int(usage["prompt_tokens"].(float64))
-						completionTokens = int(usage["completion_tokens"].(float64))
-					}
 				}
 			}
 		}
 		res.Body.Close()
-
-		usageInfo = Usage{
-			PromptTokens:     promptTokens,
-			CompletionTokens: completionTokens,
-			TotalTokens:      promptTokens + completionTokens,
-		}
 
 		if !finished {
 			if req.Endpoint == ENDPOINTS.CHAT {
@@ -421,7 +406,6 @@ func queryMiners(c *Context, req RequestInfo) (ResponseInfo, error) {
 							ResponseTokens:   tokens,
 							TimeToFirstToken: timeToFirstToken,
 							Responses:        llmResponse,
-							Usage:            usageInfo,
 						},
 					},
 					Success: false,
@@ -435,7 +419,6 @@ func queryMiners(c *Context, req RequestInfo) (ResponseInfo, error) {
 						ResponseTokens:   tokens,
 						TimeToFirstToken: timeToFirstToken,
 						Responses:        llmResponse,
-						Usage:            usageInfo,
 					},
 				},
 				Success: false,
@@ -503,7 +486,6 @@ func queryMiners(c *Context, req RequestInfo) (ResponseInfo, error) {
 					Responses:        llmResponse,
 					ResponseTokens:   tokens,
 					TimeToFirstToken: timeToFirstToken,
-					Usage:            usageInfo,
 				},
 			},
 		}, nil
@@ -519,7 +501,6 @@ func queryMiners(c *Context, req RequestInfo) (ResponseInfo, error) {
 					Responses:        llmResponse,
 					ResponseTokens:   tokens,
 					TimeToFirstToken: timeToFirstToken,
-					Usage:            usageInfo,
 				},
 			},
 		}, nil
@@ -550,29 +531,15 @@ func saveRequest(db *sql.DB, res ResponseInfo, req RequestInfo, logger *zap.Suga
 		return
 	}
 
-	// Re-add later vv
-
-	// Update credits
-	// usedCredits := res.ResponseTokens * cpt
-	//_, err = db.Exec("UPDATE user SET credits=? WHERE id=?",
-	//	max(req.StartingCredits-int64(usedCredits), 0),
-	//	req.UserId)
-	//if err != nil {
-	//	logger.Errorf("Failed to update credits: %d - %d\n%s\n", req.StartingCredits, usedCredits, err)
-	//}
-
 	var responseJson []byte
-	var usageJson []byte
 	var timeForFirstToken int64 = 0
 	switch res.Type {
 	case ENDPOINTS.CHAT:
 		timeForFirstToken = res.Data.Chat.TimeToFirstToken
 		responseJson, err = json.Marshal(res.Data.Chat.Responses)
-		usageJson, _ = json.Marshal(res.Data.Chat.Usage)
 	case ENDPOINTS.COMPLETION:
 		timeForFirstToken = res.Data.Chat.TimeToFirstToken
 		responseJson, err = json.Marshal(res.Data.Completion.Responses)
-		usageJson, _ = json.Marshal(res.Data.Completion.Usage)
 	case ENDPOINTS.IMAGE:
 		responseJson, err = json.Marshal(res.Data.Image)
 	}
@@ -583,8 +550,8 @@ func saveRequest(db *sql.DB, res ResponseInfo, req RequestInfo, logger *zap.Suga
 
 	_, err = db.Exec(`
 	INSERT INTO 
-		request (pub_id, user_id, credits_used, request, response, model_id, uid, hotkey, coldkey, miner_address, endpoint, success, time_to_first_token, total_time, scored, usage)
-		VALUES	(?,      ?,       ?,            ?,       ?,        ?,        ?,   ?,      ?,       ?,             ?,        ?,       ?,                  ?,          ?,      ?)`,
+		request (pub_id, user_id, credits_used, request, response, model_id, uid, hotkey, coldkey, miner_address, endpoint, success, time_to_first_token, total_time, scored)
+		VALUES	(?,      ?,       ?,            ?,       ?,        ?,        ?,   ?,      ?,       ?,             ?,        ?,       ?,                  ?,          ?)`,
 		req.Id,
 		req.UserId,
 		0,
@@ -602,7 +569,6 @@ func saveRequest(db *sql.DB, res ResponseInfo, req RequestInfo, logger *zap.Suga
 		timeForFirstToken,
 		res.TotalTime,
 		req.Miner != nil,
-		NewNullString(string(usageJson)),
 	)
 	if err != nil {
 		logger.Errorw("Failed to update", "error", err.Error())
