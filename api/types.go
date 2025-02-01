@@ -1,6 +1,9 @@
 package main
 
-import "fmt"
+import (
+	"fmt"
+	"time"
+)
 
 type RequestError struct {
 	StatusCode int
@@ -118,14 +121,61 @@ var ROUTES = map[string]string{
 	ENDPOINTS.IMAGE:      "/v1/images/generations",
 }
 
+type dbModel struct {
+	ID          string
+	CreatedAt   time.Time
+	Modality    string
+	Description string
+}
+
 type Model struct {
-	ID      string `json:"id"`
-	Object  string `json:"object"`
-	Created int64  `json:"created"`
-	OwnedBy string `json:"owned_by"`
+	ID            string       `json:"id"`
+	Name          string       `json:"name"`
+	Object        string       `json:"object"`
+	Created       int64        `json:"created"`
+	OwnedBy       string       `json:"owned_by"`
+	Description   string       `json:"description"`
+	ContextLength int          `json:"context_length"`
+	Architecture  Architecture `json:"architecture"`
+	Pricing       Pricing      `json:"pricing"`
+	TopProvider   TopProvider  `json:"top_provider"`
 }
 
 type ModelList struct {
 	Object string  `json:"object"`
 	Data   []Model `json:"data"`
+}
+type HuggingFaceData struct {
+	Config struct {
+		MaxPositionEmbeddings int `json:"max_position_embeddings"`
+		MaxLength             int `json:"max_length"`
+		MaxNewTokens          int `json:"max_new_tokens"`
+	} `json:"config"`
+	CardData struct {
+		License string `json:"license"`
+	} `json:"cardData"`
+	TokenizerConfig struct {
+		TokenizerClass string `json:"tokenizer_class"`
+	} `json:"tokenizer_config"`
+	PipelineTag string   `json:"pipeline_tag"`
+	Tags        []string `json:"tags"`
+}
+
+type Architecture struct {
+	Modality     string  `json:"modality"`
+	Tokenizer    string  `json:"tokenizer"`
+	InstructType *string `json:"instruct_type"`
+}
+
+type Pricing struct {
+	Prompt     string `json:"prompt"`
+	Completion string `json:"completion"`
+	Image      string `json:"image"`
+	Request    string `json:"request"`
+}
+
+type TopProvider struct {
+	ContextLength       int  `json:"context_length"`
+	MaxCompletionTokens int  `json:"max_completion_tokens"`
+	IsModerated         bool `json:"is_moderated"`
 }

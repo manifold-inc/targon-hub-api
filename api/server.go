@@ -2,7 +2,9 @@ package main
 
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
+	"net/http"
 	"os"
 	"strconv"
 	"strings"
@@ -195,9 +197,15 @@ func main() {
 		cc := c.(*Context)
 		defer cc.log.Sync()
 
+		// 1. Get enabled models with formatted created_at
 		rows, err := db.Query(`
-			SELECT name, DATE_FORMAT(created_at, '%Y-%m-%d %H:%i:%s') as created_at 
-			FROM model WHERE enabled = 1
+			SELECT 
+				name, 
+				DATE_FORMAT(created_at, '%Y-%m-%d %H:%i:%s') as created_at,
+				modality,
+				description
+			FROM model 
+			WHERE enabled = 1
 		`)
 		if err != nil {
 			cc.log.Error("Failed to get models: " + err.Error())
@@ -205,31 +213,128 @@ func main() {
 		}
 		defer rows.Close()
 
-		var models []Model
+		var dbModels []dbModel
 		for rows.Next() {
-			var model Model
+			var m dbModel
 			var createdAtStr string
-			if err := rows.Scan(&model.ID, &createdAtStr); err != nil {
+			var modality string
+			var description string
+
+			if err := rows.Scan(&m.ID, &createdAtStr, &modality, &description); err != nil {
 				cc.log.Error("Failed to scan model row: " + err.Error())
-				return c.String(500, "Failed to get models")
+				continue
 			}
 
+			// Parse formatted timestamp
 			createdAt, err := time.Parse("2006-01-02 15:04:05", createdAtStr)
 			if err != nil {
-				cc.log.Error("Failed to parse created_at: " + err.Error())
-				return c.String(500, "Failed to get models")
+				cc.log.Errorf("Failed to parse created_at for %s: %v", m.ID, err)
+				continue
 			}
 
-			model.Object = "model"
-			model.Created = createdAt.Unix()
-			model.OwnedBy = strings.Split(model.ID, "/")[0]
-
-			models = append(models, model)
+			m.CreatedAt = createdAt
+			m.Modality = modality
+			m.Description = description
+			dbModels = append(dbModels, m)
 		}
 
-		if err = rows.Err(); err != nil {
-			cc.log.Error("Error iterating model rows: " + err.Error())
-			return c.String(500, "Failed to get models")
+		// 2. Query Hugging Face for each model
+		client := &http.Client{Timeout: 10 * time.Second}
+		var models []Model
+
+		for _, dbModel := range dbModels {
+			// Add Authorization header for HuggingFace API
+			req, err := http.NewRequest("GET",
+				fmt.Sprintf("https://huggingface.co/api/models/%s", dbModel.ID),
+				nil,
+			)
+			if err != nil {
+				cc.log.Errorf("Failed to create request for %s: %v", dbModel.ID, err)
+				continue
+			}
+
+			req.Header.Add("Authorization", "Bearer "+os.Getenv("HUGGINGFACE_TOKEN"))
+
+			resp, err := client.Do(req)
+			if err != nil {
+				cc.log.Errorf("Failed to fetch %s: %v", dbModel.ID, err)
+				continue
+			}
+			defer resp.Body.Close()
+
+			if resp.StatusCode != http.StatusOK {
+				cc.log.Errorf("HuggingFace API error for %s: status %d", dbModel.ID, resp.StatusCode)
+				continue
+			}
+
+			var hfData HuggingFaceData
+			if err := json.NewDecoder(resp.Body).Decode(&hfData); err != nil {
+				cc.log.Errorf("Failed to decode %s: %v", dbModel.ID, err)
+				// Use fallback values instead of skipping
+				models = append(models, Model{
+					ID:            dbModel.ID,
+					Name:          strings.Split(dbModel.ID, "/")[1],
+					Object:        "model",
+					Created:       dbModel.CreatedAt.Unix(),
+					OwnedBy:       strings.Split(dbModel.ID, "/")[0],
+					Description:   dbModel.Description,
+					ContextLength: 4096, // Default fallback
+					Architecture: Architecture{
+						Modality:     mapModality(dbModel.Modality),
+						Tokenizer:    "unknown",
+						InstructType: nil,
+					},
+					Pricing: Pricing{
+						Prompt:     "0",
+						Completion: "0",
+						Image:      "0",
+						Request:    "0",
+					},
+					TopProvider: TopProvider{
+						ContextLength:       4096, // Default fallback
+						MaxCompletionTokens: 2048, // Default fallback
+						IsModerated:         false,
+					},
+				})
+				continue
+			}
+
+			// 3. Build combined response
+			contextLength := 4096
+			if hfData.Config.MaxPositionEmbeddings > 0 {
+				contextLength = hfData.Config.MaxPositionEmbeddings
+			}
+
+			tokenizer := "unknown"
+			if hfData.TokenizerConfig.TokenizerClass != "" {
+				tokenizer = hfData.TokenizerConfig.TokenizerClass
+			}
+
+			models = append(models, Model{
+				ID:            dbModel.ID,
+				Name:          strings.Split(dbModel.ID, "/")[1],
+				Object:        "model",
+				Created:       dbModel.CreatedAt.Unix(),
+				OwnedBy:       strings.Split(dbModel.ID, "/")[0],
+				Description:   dbModel.Description,
+				ContextLength: contextLength,
+				Architecture: Architecture{
+					Modality:     mapModality(dbModel.Modality),
+					Tokenizer:    tokenizer,
+					InstructType: nil,
+				},
+				Pricing: Pricing{
+					Prompt:     "0",
+					Completion: "0",
+					Image:      "0",
+					Request:    "0",
+				},
+				TopProvider: TopProvider{
+					ContextLength:       contextLength,
+					MaxCompletionTokens: getMaxCompletionTokens(&hfData),
+					IsModerated:         false,
+				},
+			})
 		}
 
 		return c.JSON(200, ModelList{
