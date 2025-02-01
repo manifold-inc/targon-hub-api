@@ -24,6 +24,7 @@ import (
 	"github.com/ChainSafe/go-schnorrkel"
 	"github.com/google/uuid"
 	"github.com/nitishm/go-rejson/v4"
+	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
 )
 
@@ -181,6 +182,12 @@ func getMinersForModel(c *Context, model string) []Miner {
 	rh := rejson.NewReJSONHandler()
 	rh.SetGoRedisClientWithContext(c.Request().Context(), client)
 	minerJSON, err := rh.JSONGet(model, ".")
+
+	// Model not available
+	if err == redis.Nil {
+		c.log.Warnf("No miners running %s", model)
+		return nil
+	}
 	if err != nil {
 		c.log.Errorw("Failed to get model from redis: "+model, "error", err.Error())
 		return nil
