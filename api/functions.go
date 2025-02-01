@@ -513,3 +513,26 @@ func NewNullString(s string) sql.NullString {
 		Valid:  true,
 	}
 }
+
+func mapModality(pipelineTag string) string {
+	switch pipelineTag {
+	case "text-generation":
+		return "text->text"
+	}
+	return ""
+}
+
+func getMaxCompletionTokens(hfData *HuggingFaceData) int {
+	// Priority: max_new_tokens > max_length > context-based fallback
+	if hfData.Config.MaxNewTokens > 0 {
+		return hfData.Config.MaxNewTokens
+	}
+	if hfData.Config.MaxLength > 0 {
+		return hfData.Config.MaxLength
+	}
+	// Default to 75% of context length if no explicit setting
+	if hfData.Config.MaxPositionEmbeddings > 0 {
+		return int(float64(hfData.Config.MaxPositionEmbeddings) * 0.75)
+	}
+	return 2048 // Default fallback
+}
