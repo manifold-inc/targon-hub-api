@@ -1,5 +1,6 @@
 services:
   vram-estimator:
+    env_file: .env
     image: manifoldlabs/targon-hub-vram-estimator:${VERSION:-latest}
     labels:
       - traefik.enable=true
