@@ -192,17 +192,18 @@ def fetch_model_data(
 def check_model_in_db(model_id: str):
     try:
         with db.cursor() as cursor:
-            # Get existing model names
-            cursor.execute("SELECT required_gpus FROM model WHERE name = %s", (model_id,))
-            # Fetch the result
+            # Get existing model id and required_gpus
+            cursor.execute("SELECT id, required_gpus FROM model WHERE name = %s", (model_id,))
             result = cursor.fetchone()
-            if result is not None and result[0] is not None:
-                return result[0]
+
+            if result is not None:
+                model_id, required_gpus = result
+                return model_id, required_gpus
             else:
-                return None
+                return None, None
     except Exception as e:
         logger.error(f"Error checking model: {model_id}: {str(e)}")
-        return None
+        return None, None
 
 def add_to_db(processed_data: Dict[str, Any]):
     try:
@@ -228,8 +229,8 @@ def add_to_db(processed_data: Dict[str, Any]):
 
 @app.post("/")
 async def post_estimate(req: Request):
-    required_gpu = check_model_in_db(req.model)
-    if required_gpu:
+    model_id, required_gpu = check_model_in_db(req.model)
+    if model_id is not None:
         return {"required_gpus": required_gpu}
 
     model_data = fetch_model_data(req.model)
