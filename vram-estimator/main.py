@@ -1,7 +1,7 @@
 import math
+from pydantic import BaseModel
 import os
 import json
-from pydantic import BaseModel, model_validator
 from typing import List, Optional, Tuple, Dict, Any
 from fastapi import FastAPI
 from accelerate.commands import estimate
