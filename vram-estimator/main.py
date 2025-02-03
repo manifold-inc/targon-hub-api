@@ -99,7 +99,11 @@ def get_model_description(organization: str, model_name: str) -> str:
 def validate_and_prepare_model(model_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     try:
         model_id = model_data["id"]
-        organization, model_name = model_id.split("/")
+        organization, model_name = model_id.split("/", 1)
+        config = model_data.get("config", {})
+        supported = True
+        needs_custom_build = False
+        required_gpus = 0
 
         if not model_name or not organization:
             logger.error(f"Invalid model ID format: {model_id}")
@@ -107,58 +111,45 @@ def validate_and_prepare_model(model_data: Dict[str, Any]) -> Optional[Dict[str,
 
         # Check if model is private/gated
         if model_data.get("private", False) or model_data.get("gated", False):
-            logger.error(f"Model {model_id} is private or gated")
-            return None
+            logger.info(f"Model {model_id} is private or gated")
+            supported = False
 
         # Check modality
         pipeline_tag = model_data.get("pipeline_tag")
         if not pipeline_tag or pipeline_tag not in MODALITIES:
-            logger.error(f"Model {model_id} has unsupported modality: {pipeline_tag}")
-            return None
+            logger.info(f"Model {model_id} has unsupported modality: {pipeline_tag}")
+            supported = False
 
         # Check library
         library_name = model_data.get("library_name")
         if not library_name:
-            logger.error(f"Model {model_id} does not have any library metadata")
-            return None
-
-        if library_name not in SUPPORTED_LIBRARIES:
-            logger.error(
+            logger.info(f"Model {model_id} does not have any library metadata")
+            supported = False
+        elif library_name not in SUPPORTED_LIBRARIES:
+            logger.info(
                 f"Library {library_name} for model {model_id} is not supported"
             )
-            return None
+            supported = False
 
         # Check if model requires trust_remote_code from config
-        if model_data.get("config", {}).get("trust_remote_code", False):
+        if config.get("trust_remote_code", False):
             needs_custom_build = True
-            required_gpus = 0
             logger.info(
                 f"Model {model_id} needs custom build (from config) - preparing for insertion"
             )
         else:
             try:
-                required_gpus = estimate_max_size(model_id, library_name)
-                if not required_gpus:
-                    needs_custom_build = True
-                    required_gpus = 0
-                    logger.info(
-                        f"Model {model_id} needs custom build (from estimation error) - preparing for insertion"
-                    )
-                else:
-                    if required_gpus <= MAX_GPUS:
-                        needs_custom_build = False
-                        logger.info(f"Model {model_id} requires {required_gpus} GPUs")
-                    else:
-                        logger.error(f"Model {model_id} has invalid GPU requirement: {required_gpus}")
-                        return None
-
+                required_gpus = estimate_max_size(model_id, library_name) or 0
+                if required_gpus > MAX_GPUS:
+                    logger.info(f"Model {model_id} has invalid GPU requirement: {required_gpus}")
+                    supported = False
             except Exception as e:
                 logger.error(f"GPU estimation error for {model_id}: {str(e)}")
-                return None
+                supported = False
 
         model_desc = get_model_description(organization, model_name)
         has_chat_template = (
-            model_data.get("config", {})
+            config
             .get("tokenizer_config", {})
             .get("chat_template")
             is not None
@@ -169,13 +160,14 @@ def validate_and_prepare_model(model_data: Dict[str, Any]) -> Optional[Dict[str,
 
         return {
             "name": model_id,
-            "modality": pipeline_tag,
+            "modality": pipeline_tag if supported else None,
             "required_gpus": 0 if needs_custom_build else required_gpus,
             "supported_endpoints": json.dumps(supported_endpoints),
             "cpt": 0 if needs_custom_build else required_gpus,
             "enabled": False,
             "custom_build": needs_custom_build,
             "description": model_desc,
+            "supported": supported
         }
 
     except Exception as e:
@@ -190,7 +182,7 @@ def fetch_model_data(
         logger.error(
             f"Failed to fetch {model_id} model: {response.status_code} - {response.text}"
         )
-        return [], None
+        return None
 
     model_data = response.json()
     logger.info(f"Fetched {model_id} model")
@@ -200,16 +192,16 @@ def check_model_in_db(model_id: str):
     try:
         with db.cursor() as cursor:
             # Get existing model names
-            cursor.execute("SELECT COUNT(*) FROM model WHERE name = %s", (model_id,))
+            cursor.execute("SELECT required_gpus FROM model WHERE name = %s", (model_id,))
             # Fetch the result
             result = cursor.fetchone()
-            if result[0] > 0:
+            if result is not None and result[0] is not None:
                 return result[0]
             else:
-                return -1
+                return None
     except Exception as e:
         logger.error(f"Error checking model: {model_id}: {str(e)}")
-        return -1
+        return None
 
 def add_to_db(processed_data: Dict[str, Any]):
     try:
@@ -217,10 +209,10 @@ def add_to_db(processed_data: Dict[str, Any]):
             insert_query = """
             INSERT INTO model (
                 name, description, modality, supported_endpoints,
-                cpt, enabled, required_gpus, custom_build, created_at
+                cpt, enabled, required_gpus, custom_build, supported, created_at
             ) VALUES (
                 %(name)s, %(description)s, %(modality)s, %(supported_endpoints)s,
-                %(cpt)s, %(enabled)s, %(required_gpus)s, %(custom_build)s, NOW()
+                %(cpt)s, %(enabled)s, %(required_gpus)s, %(custom_build)s, %(supported)s, NOW()
             )
             """
             cursor.execute(insert_query, processed_data)
@@ -236,14 +228,13 @@ def add_to_db(processed_data: Dict[str, Any]):
 @app.post("/")
 async def post_estimate(req: Request):
     required_gpu = check_model_in_db(req.model)
-    if required_gpu >= 0:
+    if required_gpu:
         return {"required_gpus": required_gpu}
 
     model_data = fetch_model_data(req.model)
 
     processed_data = validate_and_prepare_model(model_data)
-    if processed_data:
-        add_to_db(processed_data)
+    add_to_db(processed_data)
 
     required_gpu = processed_data["required_gpus"]
     logger.info(f"{req.model}: {required_gpu}")
