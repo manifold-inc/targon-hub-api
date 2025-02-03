@@ -98,9 +98,7 @@ func preprocessOpenaiRequest(c *Context, db *sql.DB, endpoint string) (*RequestI
 
 		if _, ok := payload["max_tokens"]; !ok {
 			payload["max_tokens"] = 512
-		} else if credits < int64(payload["max_tokens"].(float64)) {
-			return nil, &RequestError{403, errors.New("out of credits")}
-		}
+		} 
 
 		if logprobs, ok := payload["logprobs"]; !ok || !logprobs.(bool) {
 			payload["logprobs"] = true
