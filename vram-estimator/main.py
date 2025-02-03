@@ -133,10 +133,11 @@ def validate_and_prepare_model(model_data: Dict[str, Any]) -> Optional[Dict[str,
 
         # Check if model requires trust_remote_code from config
         if config.get("trust_remote_code", False):
-            needs_custom_build = True
             logger.info(
-                f"Model {model_id} needs custom build (from config) - preparing for insertion"
+                f"Model {model_id} needs custom build (from config)"
             )
+            needs_custom_build = True
+            supported = False
         else:
             try:
                 required_gpus = estimate_max_size(model_id, library_name) or 0
