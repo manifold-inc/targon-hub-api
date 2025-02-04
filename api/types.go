@@ -129,3 +129,10 @@ type ModelList struct {
 	Object string  `json:"object"`
 	Data   []Model `json:"data"`
 }
+
+type OpenAIError struct {
+	Message string `json:"message"`
+	Object  string `json:"object"`
+	Type    string `json:"Type"`
+	Code    int    `json:"code"`
+}

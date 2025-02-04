@@ -121,12 +121,23 @@ func main() {
 
 		if err != nil {
 			cc.log.Warn(err.Error())
-			return c.String(500, err.Error())
+			return c.JSON(500, OpenAIError{
+				Message: err.Error(),
+				Object:  "error",
+				Type:    "InternalServerError",
+				Code:    500,
+			})
 		}
 
 		if !res.Success {
 			cc.log.Warnf("Miner %d: %s %s\n Failed request\n", res.Miner.Uid, res.Miner.Hotkey, res.Miner.Coldkey)
-			return c.String(500, fmt.Sprintf("Miner UID %d Failed Request. Try Again.", res.Miner.Uid))
+
+			return c.JSON(503, OpenAIError{
+				Message: fmt.Sprintf("Miner UID %d Failed Request. Try Again.", res.Miner.Uid),
+				Object:  "error",
+				Type:    "APITimeoutError",
+				Code:    503,
+			})
 		}
 
 		return c.String(200, "")
@@ -149,12 +160,22 @@ func main() {
 
 		if err != nil {
 			cc.log.Warn(err.Error())
-			return c.String(500, err.Error())
+			return c.JSON(500, OpenAIError{
+				Message: err.Error(),
+				Object:  "error",
+				Type:    "InternalServerError",
+				Code:    500,
+			})
 		}
 
 		if !res.Success {
 			cc.log.Warnf("Miner %d: %s %s\n Failed request\n", res.Miner.Uid, res.Miner.Hotkey, res.Miner.Coldkey)
-			return c.String(500, fmt.Sprintf("Miner UID %d Failed Request. Try Again.", res.Miner.Uid))
+			return c.JSON(503, OpenAIError{
+				Message: fmt.Sprintf("Miner UID %d Failed Request. Try Again.", res.Miner.Uid),
+				Object:  "error",
+				Type:    "APITimeoutError",
+				Code:    503,
+			})
 		}
 
 		return c.String(200, "")
