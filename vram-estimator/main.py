@@ -177,7 +177,7 @@ def validate_and_prepare_model(model_data: Dict[str, Any]) -> Optional[Dict[str,
 
 def fetch_model_data(
     model_id: Optional[str] = None,
-) -> Tuple[List[Dict[str, Any]]]:
+    ):
     response = requests.get(f"https://huggingface.co/api/models/{model_id}")
     if not response.ok:
         logger.error(
@@ -211,7 +211,7 @@ def add_to_db(processed_data: Dict[str, Any]):
             insert_query = """
             INSERT INTO model (
                 name, description, modality, supported_endpoints,
-                cpt, enabled, required_gpus, custom_build, supported, created_at
+                cpt, enabled, required_gpus, custom_build, supported_endpoints, created_at
             ) VALUES (
                 %(name)s, %(description)s, %(modality)s, %(supported_endpoints)s,
                 %(cpt)s, %(enabled)s, %(required_gpus)s, %(custom_build)s, %(supported)s, NOW()
@@ -234,8 +234,12 @@ async def post_estimate(req: Request):
         return {"required_gpus": required_gpu}
 
     model_data = fetch_model_data(req.model)
+    if model_data is None:
+        return {"required_gpus": 0}
 
     processed_data = validate_and_prepare_model(model_data)
+    if processed_data == None:
+        return {'required_gpus': 0}
     add_to_db(processed_data)
 
     required_gpu = processed_data["required_gpus"]
