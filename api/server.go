@@ -112,11 +112,6 @@ func main() {
 		}()
 		request, preprocessError := preprocessOpenaiRequest(cc, db, ENDPOINTS.CHAT)
 		if preprocessError != nil {
-			if preprocessError.StatusCode == 401 {
-				cc.log.Warn("unauthorized")
-				return cc.String(preprocessError.StatusCode, preprocessError.Error())
-			}
-			cc.log.Error(preprocessError.Error())
 			return cc.String(preprocessError.StatusCode, preprocessError.Error())
 		}
 
@@ -161,11 +156,6 @@ func main() {
 		}()
 		request, preprocessError := preprocessOpenaiRequest(cc, db, ENDPOINTS.COMPLETION)
 		if preprocessError != nil {
-			if preprocessError.StatusCode == 401 {
-				cc.log.Warn("unauthorized")
-				return cc.String(preprocessError.StatusCode, preprocessError.Error())
-			}
-			cc.log.Error(preprocessError.Error())
 			return cc.String(preprocessError.StatusCode, preprocessError.Error())
 		}
 
@@ -210,11 +200,6 @@ func main() {
 		}()
 		request, preprocessError := preprocessOpenaiRequest(cc, db, ENDPOINTS.IMAGE)
 		if preprocessError != nil {
-			if preprocessError.StatusCode == 401 {
-				cc.log.Warn("unauthorized")
-				return cc.String(preprocessError.StatusCode, preprocessError.Error())
-			}
-			cc.log.Error(preprocessError.Error())
 			return cc.String(preprocessError.StatusCode, preprocessError.Error())
 		}
 		res, err := queryMiners(cc, *request)

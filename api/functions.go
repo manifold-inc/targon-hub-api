@@ -35,6 +35,7 @@ func preprocessOpenaiRequest(c *Context, db *sql.DB, endpoint string) (*RequestI
 	c.Response().Header().Set("Cache-Control", "no-cache")
 	c.Response().Header().Set("Connection", "keep-alive")
 	c.Response().Header().Set("X-Accel-Buffering", "no")
+
 	var miner, minerHost string
 	if DEBUG {
 		miner = c.Request().Header.Get("X-Targon-Miner-Uid")
@@ -98,7 +99,7 @@ func preprocessOpenaiRequest(c *Context, db *sql.DB, endpoint string) (*RequestI
 
 		if _, ok := payload["max_tokens"]; !ok {
 			payload["max_tokens"] = 512
-		} 
+		}
 
 		if logprobs, ok := payload["logprobs"]; !ok || !logprobs.(bool) {
 			payload["logprobs"] = true
