@@ -161,7 +161,7 @@ def validate_and_prepare_model(model_data: Dict[str, Any]) -> Optional[Dict[str,
 
         return {
             "name": model_id,
-            "modality": pipeline_tag if supported else None,
+            "modality": pipeline_tag,
             "required_gpus": 0 if needs_custom_build else required_gpus,
             "supported_endpoints": json.dumps(supported_endpoints),
             "cpt": 0 if needs_custom_build else required_gpus,
