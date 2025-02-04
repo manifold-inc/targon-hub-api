@@ -115,29 +115,20 @@ func main() {
 			return cc.String(preprocessError.StatusCode, preprocessError.Error())
 		}
 
-		success := false
-		for i := 0; i < 3; i++ {
-			res, err := queryMiners(cc, *request)
-			go saveRequest(db, res, *request, cc.log)
+		res, err := queryMiners(cc, *request)
+		go saveRequest(db, res, *request, cc.log)
 
-			if err != nil {
-				cc.log.Warn(err.Error())
-				return c.JSON(500, OpenAIError{
-					Message: err.Error(),
-					Object:  "error",
-					Type:    "InternalServerError",
-					Code:    500,
-				})
-			}
-			if !res.Success {
-				cc.log.Warnf("Miner %d: %s %s\n Failed request\n", res.Miner.Uid, res.Miner.Hotkey, res.Miner.Coldkey)
-				continue
-			}
-			success = true
-			break
+		if err != nil {
+			cc.log.Warn(err.Error())
+			return c.JSON(500, OpenAIError{
+				Message: err.Error(),
+				Object:  "error",
+				Type:    "InternalServerError",
+				Code:    500,
+			})
 		}
-
-		if !success {
+		if !res.Success {
+			cc.log.Warnf("Miner %d: %s %s\n Failed request\n", res.Miner.Uid, res.Miner.Hotkey, res.Miner.Coldkey)
 			return c.JSON(503, OpenAIError{
 				Message: "All miners timed out, please retry",
 				Object:  "error",
@@ -159,29 +150,20 @@ func main() {
 			return cc.String(preprocessError.StatusCode, preprocessError.Error())
 		}
 
-		success := false
-		for i := 0; i < 3; i++ {
-			res, err := queryMiners(cc, *request)
-			go saveRequest(db, res, *request, cc.log)
+		res, err := queryMiners(cc, *request)
+		go saveRequest(db, res, *request, cc.log)
 
-			if err != nil {
-				cc.log.Warn(err.Error())
-				return c.JSON(500, OpenAIError{
-					Message: err.Error(),
-					Object:  "error",
-					Type:    "InternalServerError",
-					Code:    500,
-				})
-			}
-			if !res.Success {
-				cc.log.Warnf("Miner %d: %s %s\n Failed request\n", res.Miner.Uid, res.Miner.Hotkey, res.Miner.Coldkey)
-				continue
-			}
-			success = true
-			break
+		if err != nil {
+			cc.log.Warn(err.Error())
+			return c.JSON(500, OpenAIError{
+				Message: err.Error(),
+				Object:  "error",
+				Type:    "InternalServerError",
+				Code:    500,
+			})
 		}
-
-		if !success {
+		if !res.Success {
+			cc.log.Warnf("Miner %d: %s %s\n Failed request\n", res.Miner.Uid, res.Miner.Hotkey, res.Miner.Coldkey)
 			return c.JSON(503, OpenAIError{
 				Message: "All miners timed out, please retry",
 				Object:  "error",
