@@ -28,7 +28,7 @@ import (
 	"go.uber.org/zap"
 )
 
-func preprocessOpenaiRequest(c *Context, db *sql.DB, endpoint string) (*RequestInfo, error) {
+func preprocessOpenaiRequest(c *Context, db *sql.DB, endpoint string) (*RequestInfo, *RequestError) {
 	c.log = c.log.With("endpoint", endpoint)
 	c.Request().Header.Add("Content-Type", "application/json")
 	bearer := c.Request().Header.Get("Authorization")

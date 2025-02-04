@@ -110,11 +110,14 @@ func main() {
 		defer func() {
 			_ = cc.log.Sync()
 		}()
-		request, err := preprocessOpenaiRequest(cc, db, ENDPOINTS.CHAT)
-		if err != nil {
-			error := err.(*RequestError)
-			cc.log.Error(err.Error())
-			return cc.String(error.StatusCode, error.Err.Error())
+		request, preprocessError := preprocessOpenaiRequest(cc, db, ENDPOINTS.CHAT)
+		if preprocessError != nil {
+			if preprocessError.StatusCode == 401 {
+				cc.log.Warn("unauthorized")
+				return cc.String(preprocessError.StatusCode, preprocessError.Error())
+			}
+			cc.log.Error(preprocessError.Error())
+			return cc.String(preprocessError.StatusCode, preprocessError.Error())
 		}
 		res, err := queryMiners(cc, *request)
 		go saveRequest(db, res, *request, cc.log)
@@ -148,11 +151,14 @@ func main() {
 		defer func() {
 			_ = cc.log.Sync()
 		}()
-		request, err := preprocessOpenaiRequest(cc, db, ENDPOINTS.COMPLETION)
-		if err != nil {
-			error := err.(*RequestError)
-			cc.log.Error(err.Error())
-			return cc.String(error.StatusCode, error.Err.Error())
+		request, preprocessError := preprocessOpenaiRequest(cc, db, ENDPOINTS.COMPLETION)
+		if preprocessError != nil {
+			if preprocessError.StatusCode == 401 {
+				cc.log.Warn("unauthorized")
+				return cc.String(preprocessError.StatusCode, preprocessError.Error())
+			}
+			cc.log.Error(preprocessError.Error())
+			return cc.String(preprocessError.StatusCode, preprocessError.Error())
 		}
 		res, err := queryMiners(cc, *request)
 
@@ -186,11 +192,14 @@ func main() {
 		defer func() {
 			_ = cc.log.Sync()
 		}()
-		request, err := preprocessOpenaiRequest(cc, db, ENDPOINTS.IMAGE)
-		if err != nil {
-			error := err.(*RequestError)
-			cc.log.Error(err.Error())
-			return cc.String(error.StatusCode, error.Err.Error())
+		request, preprocessError := preprocessOpenaiRequest(cc, db, ENDPOINTS.IMAGE)
+		if preprocessError != nil {
+			if preprocessError.StatusCode == 401 {
+				cc.log.Warn("unauthorized")
+				return cc.String(preprocessError.StatusCode, preprocessError.Error())
+			}
+			cc.log.Error(preprocessError.Error())
+			return cc.String(preprocessError.StatusCode, preprocessError.Error())
 		}
 		res, err := queryMiners(cc, *request)
 
