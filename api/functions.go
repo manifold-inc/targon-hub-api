@@ -88,7 +88,7 @@ func preprocessOpenaiRequest(c *Context, db *sql.DB, endpoint string) (*RequestI
 			return nil, &RequestError{400, errors.New("targon currently only supports streaming requests")}
 		}
 
-		if _, ok := payload["seed"]; !ok {
+		if val, ok := payload["seed"]; !ok || val == nil {
 			payload["seed"] = rand.Intn(100000)
 		}
 
