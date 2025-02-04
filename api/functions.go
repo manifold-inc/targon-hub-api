@@ -331,7 +331,8 @@ func queryMiners(c *Context, req RequestInfo) (ResponseInfo, error) {
 
 	if req.Endpoint == ENDPOINTS.CHAT || req.Endpoint == ENDPOINTS.COMPLETION {
 		r = r.WithContext(ctx)
-		timer = time.AfterFunc(4*time.Second, func() {
+		timer = time.AfterFunc(60*time.Second, func() {
+			c.log.Warn("Timer context timed out")
 			cancel()
 		})
 	}
@@ -364,7 +365,7 @@ func queryMiners(c *Context, req RequestInfo) (ResponseInfo, error) {
 			case <-c.Request().Context().Done():
 				return ResponseInfo{}, errors.New("request canceled")
 			default:
-				timer.Reset(2 * time.Second)
+				timer.Reset(140 * time.Second)
 				token := reader.Text()
 				fmt.Fprint(c.Response(), token+"\n\n")
 				c.Response().Flush()
