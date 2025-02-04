@@ -211,7 +211,7 @@ def add_to_db(processed_data: Dict[str, Any]):
             insert_query = """
             INSERT INTO model (
                 name, description, modality, supported_endpoints,
-                cpt, enabled, required_gpus, custom_build, supported_endpoints, created_at
+                cpt, enabled, required_gpus, custom_build, supported, created_at
             ) VALUES (
                 %(name)s, %(description)s, %(modality)s, %(supported_endpoints)s,
                 %(cpt)s, %(enabled)s, %(required_gpus)s, %(custom_build)s, %(supported)s, NOW()
