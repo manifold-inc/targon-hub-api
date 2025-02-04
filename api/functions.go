@@ -187,6 +187,10 @@ func getMinersForModel(c *Context, model string) []Miner {
 		c.log.Warnf("No miners running %s", model)
 		return nil
 	}
+	if err == context.Canceled {
+		c.log.Warn(err.Error())
+		return nil
+	}
 	if err != nil {
 		c.log.Errorw("Failed to get model from redis: "+model, "error", err.Error())
 		return nil
