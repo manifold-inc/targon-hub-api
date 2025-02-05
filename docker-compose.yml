@@ -72,6 +72,9 @@ services:
     environment:
       - INFLUX_ENDPOINT=${INFLUX_ENDPOINT}
       - INFLUX_TOKEN=${INFLUX_TOKEN}
+      - LOKI_ENDPOINT=${LOKI_ENDPOINT}
+      - LOKI_USERNAME=${LOKI_USERNAME}
+      - LOKI_PASSWORD=${LOKI_PASSWORD}
     volumes:
       - ./vector.toml:/etc/vector/vector.toml
       - /var/run/docker.sock:/var/run/docker.sock:ro
