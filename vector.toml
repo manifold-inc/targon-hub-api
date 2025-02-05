@@ -46,3 +46,5 @@ auth.password = "${LOKI_PASSWORD}"
 auth.strategy = "basic"
 encoding.codec="json"
 encoding.json.pretty=false
+labels.source = "vector"
+structured_metadata.source = "vector"
