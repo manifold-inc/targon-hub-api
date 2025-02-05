@@ -37,7 +37,7 @@ endpoint = "${INFLUX_ENDPOINT}"
 org = "manifold"
 token = "${INFLUX_TOKEN}"
 
-[sinks.my_sink_id]
+[sinks.loki]
 type = "loki"
 inputs = [ "docker_logs_to_json" ]
 endpoint = "${LOKI_ENDPOINT}"
