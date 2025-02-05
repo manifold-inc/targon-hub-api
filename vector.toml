@@ -44,3 +44,5 @@ endpoint = "${LOKI_ENDPOINT}"
 auth.user = "${LOKI_USERNAME}"
 auth.password = "${LOKI_PASSWORD}"
 auth.strategy = "basic"
+encoding.codec="json"
+encoding.json.pretty=false
