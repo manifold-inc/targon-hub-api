@@ -435,7 +435,7 @@ func queryMiners(c *Context, req *RequestInfo) (*ResponseInfo, error) {
 
 	totalTime := int64(time.Since(start) / time.Millisecond)
 	ri.TotalTime = totalTime
-	c.log.Infof("Finished Request in %dms", totalTime, "final", true)
+	c.log.Infof("Finished Request in %dms", totalTime, "final", "true")
 	return &ri, nil
 }
 
@@ -595,7 +595,7 @@ scanner:
 		}
 	}
 	totalTime := int64(time.Since(start) / time.Millisecond)
-	c.log.Infof("Finished fallback request in %dms", totalTime, "final", true)
+	c.log.Infof("Finished fallback request in %dms", totalTime, "final", "true")
 	return nil
 }
 
