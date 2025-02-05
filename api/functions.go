@@ -83,6 +83,14 @@ func preprocessOpenaiRequest(c *Context, db *sql.DB, endpoint string) (*RequestI
 		}
 	}
 
+	if endpoint == ENDPOINTS.CHAT {
+		var req Request
+		err = json.Unmarshal(body, &req)
+		if err != nil {
+			return nil, &RequestError{400, errors.New("targon only supports basic chat requests with `role:string` and `content:string`")}
+		}
+	}
+
 	// Conditional Check for LLM
 	if endpoint == ENDPOINTS.CHAT || endpoint == ENDPOINTS.COMPLETION {
 		if stream, ok := payload["stream"]; !ok || !stream.(bool) {
