@@ -70,6 +70,13 @@ func preprocessOpenaiRequest(c *Context, db *sql.DB, endpoint string) (*RequestI
 		return nil, &RequestError{500, errors.New("internal server error")}
 	}
 
+	model, ok := payload["model"]
+	if !ok {
+		return nil, &RequestError{500, errors.New("model field required")}
+	}
+
+	c.log = c.log.With("model", model.(string))
+
 	// Image Defaults - Width, Height, Prompt (NOT NULL)
 	if endpoint == ENDPOINTS.IMAGE {
 		if _, ok := payload["width"]; !ok {
@@ -217,14 +224,14 @@ func getMinersForModel(c *Context, model string) []Miner {
 	return miners
 }
 
-func queryMiners(c *Context, req RequestInfo) (ResponseInfo, error) {
+func queryMiners(c *Context, req *RequestInfo) (*ResponseInfo, error) {
 	body := req.Body
 	// Query miners with llm request
 	var requestBody RequestBody
 	err := json.Unmarshal(body, &requestBody)
 	if err != nil {
 		c.log.Errorf("Error unmarshaling request body: %s\nBody: %s\n", err.Error(), string(body))
-		return ResponseInfo{}, errors.New("invalid body")
+		return nil, errors.New("invalid body")
 	}
 
 	var miner Miner
@@ -246,7 +253,7 @@ func queryMiners(c *Context, req RequestInfo) (ResponseInfo, error) {
 	if len(req.MinerHost) == 0 {
 		miners := getMinersForModel(c, requestBody.Model)
 		if len(miners) == 0 {
-			return ResponseInfo{}, errors.New("no miners")
+			return nil, errors.New("no miners")
 		}
 
 		miner = miners[0]
@@ -264,7 +271,7 @@ func queryMiners(c *Context, req RequestInfo) (ResponseInfo, error) {
 				}
 			}
 			if !found {
-				return ResponseInfo{}, errors.New("could not find miner with uid")
+				return nil, errors.New("could not find miner with uid")
 			}
 		}
 
@@ -286,7 +293,7 @@ func queryMiners(c *Context, req RequestInfo) (ResponseInfo, error) {
 
 	route, ok := ROUTES[req.Endpoint]
 	if !ok {
-		return ResponseInfo{}, errors.New("unknown method")
+		return nil, errors.New("unknown method")
 	}
 
 	endpoint := "http://" + miner.Ip + ":" + fmt.Sprint(miner.Port) + route
@@ -323,7 +330,7 @@ func queryMiners(c *Context, req RequestInfo) (ResponseInfo, error) {
 	r, err := http.NewRequest("POST", endpoint, bytes.NewBuffer(req.Body))
 	if err != nil {
 		c.log.Warnf("Failed miner request: %s\n", err.Error())
-		return ResponseInfo{Miner: miner, Success: false}, nil
+		return &ResponseInfo{Miner: miner, Success: false}, nil
 	}
 
 	// Set headers
@@ -340,13 +347,13 @@ func queryMiners(c *Context, req RequestInfo) (ResponseInfo, error) {
 		if res != nil {
 			res.Body.Close()
 		}
-		return ResponseInfo{Miner: miner, Success: false}, nil
+		return &ResponseInfo{Miner: miner, Success: false}, nil
 	}
 	if res.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(res.Body)
 		res.Body.Close()
 		c.log.Warnf("Miner: %s %s\nError: %s\n", miner.Hotkey, miner.Coldkey, string(body))
-		return ResponseInfo{Miner: miner, Success: false}, nil
+		return &ResponseInfo{Miner: miner, Success: false}, nil
 	}
 
 	c.log.Infof("Miner: %s %s\n", miner.Hotkey, miner.Coldkey)
@@ -359,7 +366,7 @@ func queryMiners(c *Context, req RequestInfo) (ResponseInfo, error) {
 		for reader.Scan() {
 			select {
 			case <-c.Request().Context().Done():
-				return ResponseInfo{}, errors.New("request canceled")
+				return &ResponseInfo{}, errors.New("request canceled")
 			default:
 				token := reader.Text()
 				fmt.Fprint(c.Response(), token+"\n\n")
@@ -387,9 +394,9 @@ func queryMiners(c *Context, req RequestInfo) (ResponseInfo, error) {
 		res.Body.Close()
 		if !finished {
 			if req.Endpoint == ENDPOINTS.CHAT {
-				return ResponseInfo{Miner: miner, Data: Data{Chat: Chat{ResponseTokens: tokens, TimeToFirstToken: timeToFirstToken, Responses: llmResponse}}, Success: false, Type: ENDPOINTS.CHAT}, nil
+				return &ResponseInfo{Miner: miner, Data: Data{Chat: Chat{ResponseTokens: tokens, TimeToFirstToken: timeToFirstToken, Responses: llmResponse}}, Success: false, Type: ENDPOINTS.CHAT}, nil
 			}
-			return ResponseInfo{Miner: miner, Data: Data{Completion: Completion{ResponseTokens: tokens, TimeToFirstToken: timeToFirstToken, Responses: llmResponse}}, Success: false, Type: ENDPOINTS.COMPLETION}, nil
+			return &ResponseInfo{Miner: miner, Data: Data{Completion: Completion{ResponseTokens: tokens, TimeToFirstToken: timeToFirstToken, Responses: llmResponse}}, Success: false, Type: ENDPOINTS.COMPLETION}, nil
 		}
 		ri = ResponseInfo{
 			Miner:   miner,
@@ -407,7 +414,7 @@ func queryMiners(c *Context, req RequestInfo) (ResponseInfo, error) {
 		responseBytes, err := io.ReadAll(res.Body)
 		if err != nil {
 			c.log.Errorf("Failed to read image response: %s", err.Error())
-			return ResponseInfo{Miner: miner, Success: false, Type: ENDPOINTS.IMAGE}, nil
+			return &ResponseInfo{Miner: miner, Success: false, Type: ENDPOINTS.IMAGE}, nil
 		}
 
 		err = json.Unmarshal(responseBytes, &imageResponse)
@@ -423,16 +430,16 @@ func queryMiners(c *Context, req RequestInfo) (ResponseInfo, error) {
 			Data: Data{Image: imageResponse},
 		}
 	default:
-		return ResponseInfo{}, errors.New("unknown method")
+		return nil, errors.New("unknown method")
 	}
 
 	totalTime := int64(time.Since(start) / time.Millisecond)
 	ri.TotalTime = totalTime
 	c.log.Infof("Finished Request in %dms", totalTime)
-	return ri, nil
+	return &ri, nil
 }
 
-func saveRequest(db *sql.DB, res ResponseInfo, req RequestInfo, logger *zap.SugaredLogger) {
+func saveRequest(db *sql.DB, res *ResponseInfo, req *RequestInfo, logger *zap.SugaredLogger) {
 	var (
 		model_id int
 		cpt      int
@@ -508,6 +515,88 @@ func saveRequest(db *sql.DB, res ResponseInfo, req RequestInfo, logger *zap.Suga
 		logger.Errorw("Failed to update", "error", err.Error())
 		return
 	}
+}
+
+func QueryFallback(c *Context, db *sql.DB, req *RequestInfo) *RequestError {
+	var requestBody RequestBody
+	err := json.Unmarshal(req.Body, &requestBody)
+	if err != nil {
+		c.log.Errorw("Error unmarshaling request body", "error", err.Error())
+		return &RequestError{400, errors.New("invalid body")}
+	}
+	var fallback_server string
+	err = db.QueryRow("SELECT model.fallback_server FROM model WHERE model.name = ?", requestBody.Model).Scan(&fallback_server)
+	if err == sql.ErrNoRows && !DEBUG {
+		return &RequestError{400, fmt.Errorf("no model found for %s", requestBody.Model)}
+	}
+	if err != nil {
+		return &RequestError{500, errors.New("internal server error")}
+	}
+	headers := map[string]string{
+		"X-Targon-Model": requestBody.Model,
+		"Authorization":  fmt.Sprintf("Bearer %s", FALLBACK_API_KEY),
+	}
+
+	// Add Connection header for LLM requests
+	if req.Endpoint == ENDPOINTS.COMPLETION || req.Endpoint == ENDPOINTS.CHAT {
+		headers["Connection"] = "keep-alive"
+	}
+
+	route := ROUTES[req.Endpoint]
+	r, err := http.NewRequest("POST", fallback_server+route, bytes.NewBuffer(req.Body))
+	if err != nil {
+		c.log.Warnw("Failed building fallback request", "error", err.Error())
+	}
+
+	// Set headers
+	for key, value := range headers {
+		r.Header.Set(key, value)
+	}
+	r.Close = true
+	r = r.WithContext(c.Request().Context())
+
+	tr := &http.Transport{
+		Dial: (&net.Dialer{
+			Timeout: 2 * time.Second,
+		}).Dial,
+		TLSHandshakeTimeout: 2 * time.Second,
+		DisableKeepAlives:   false,
+	}
+	httpClient := http.Client{Transport: tr, Timeout: 2 * time.Minute}
+	res, err := httpClient.Do(r)
+	start := time.Now()
+	if res != nil {
+		defer res.Body.Close()
+	}
+	if err != nil {
+		c.log.Warnw("Fallback request failed", "error", err)
+		return &RequestError{429, errors.New("fallback request failed")}
+	}
+	if res.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(res.Body)
+		res.Body.Close()
+		c.log.Warnw("Fallback request failed", "error", body)
+		return &RequestError{429, errors.New("fallback request failed")}
+	}
+	reader := bufio.NewScanner(res.Body)
+
+scanner:
+	for reader.Scan() {
+		select {
+		case <-c.Request().Context().Done():
+			return &RequestError{400, errors.New("request canceled")}
+		default:
+			token := reader.Text()
+			fmt.Fprint(c.Response(), token+"\n\n")
+			c.Response().Flush()
+			if token == "data: [DONE]" {
+				break scanner
+			}
+		}
+	}
+	totalTime := int64(time.Since(start) / time.Millisecond)
+	c.log.Infof("Finished fallback request in %dms", totalTime)
+	return nil
 }
 
 func NewNullString(s string) sql.NullString {

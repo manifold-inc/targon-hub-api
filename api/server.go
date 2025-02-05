@@ -18,11 +18,12 @@ import (
 )
 
 var (
-	HOTKEY        string
-	PUBLIC_KEY    string
-	PRIVATE_KEY   string
-	INSTANCE_UUID string
-	DEBUG         bool
+	HOTKEY           string
+	PUBLIC_KEY       string
+	PRIVATE_KEY      string
+	INSTANCE_UUID    string
+	DEBUG            bool
+	FALLBACK_API_KEY string
 
 	client *redis.Client
 )
@@ -49,6 +50,7 @@ func main() {
 	HOTKEY = safeEnv("HOTKEY")
 	PUBLIC_KEY = safeEnv("PUBLIC_KEY")
 	PRIVATE_KEY = safeEnv("PRIVATE_KEY")
+	FALLBACK_API_KEY = safeEnv("FALLBACK_API_KEY")
 	DSN := safeEnv("DSN")
 	REDIS_HOST := getEnv("REDIS_HOST", "cache")
 	REDIS_PORT := getEnv("REDIS_PORT", "6379")
@@ -115,11 +117,9 @@ func main() {
 			return cc.String(preprocessError.StatusCode, preprocessError.Error())
 		}
 
-		res, err := queryMiners(cc, *request)
-		go saveRequest(db, res, *request, cc.log)
-
+		res, err := queryMiners(cc, request)
 		if err != nil {
-			cc.log.Warn(err.Error())
+			cc.log.Warnw("Failed request, most likely un-recoverable. Not sending to fallback", "error", err.Error())
 			return c.JSON(500, OpenAIError{
 				Message: err.Error(),
 				Object:  "error",
@@ -127,13 +127,20 @@ func main() {
 				Code:    500,
 			})
 		}
-		if !res.Success {
-			cc.log.Warnf("Miner %d: %s %s\n Failed request\n", res.Miner.Uid, res.Miner.Hotkey, res.Miner.Coldkey)
+		go saveRequest(db, res, request, cc.log)
+		if res.Success {
+			return c.String(200, "")
+		}
+
+		cc.log.Warnw("failed request, sending to fallback", "uid", res.Miner.Uid, "hotkey", res.Miner.Hotkey, "coldkey", res.Miner.Coldkey)
+		qerr := QueryFallback(cc, db, request)
+		if qerr != nil {
+			cc.log.Warnw("Failed fallback", "error", qerr.Error())
 			return c.JSON(503, OpenAIError{
-				Message: "All miners timed out, please retry",
+				Message: qerr.Error(),
 				Object:  "error",
 				Type:    "APITimeoutError",
-				Code:    503,
+				Code:    qerr.StatusCode,
 			})
 		}
 
@@ -150,11 +157,9 @@ func main() {
 			return cc.String(preprocessError.StatusCode, preprocessError.Error())
 		}
 
-		res, err := queryMiners(cc, *request)
-		go saveRequest(db, res, *request, cc.log)
-
+		res, err := queryMiners(cc, request)
 		if err != nil {
-			cc.log.Warn(err.Error())
+			cc.log.Warnw("Failed request, most likely un-recoverable. Not sending to fallback", "error", err.Error())
 			return c.JSON(500, OpenAIError{
 				Message: err.Error(),
 				Object:  "error",
@@ -162,13 +167,20 @@ func main() {
 				Code:    500,
 			})
 		}
-		if !res.Success {
-			cc.log.Warnf("Miner %d: %s %s\n Failed request\n", res.Miner.Uid, res.Miner.Hotkey, res.Miner.Coldkey)
+		go saveRequest(db, res, request, cc.log)
+		if res.Success {
+			return c.String(200, "")
+		}
+
+		cc.log.Warnw("failed request, sending to fallback", "uid", res.Miner.Uid, "hotkey", res.Miner.Hotkey, "coldkey", res.Miner.Coldkey)
+		qerr := QueryFallback(cc, db, request)
+		if qerr != nil {
+			cc.log.Warnw("Failed fallback", "error", qerr.Error())
 			return c.JSON(503, OpenAIError{
-				Message: "All miners timed out, please retry",
+				Message: qerr.Error(),
 				Object:  "error",
 				Type:    "APITimeoutError",
-				Code:    503,
+				Code:    qerr.StatusCode,
 			})
 		}
 
@@ -184,12 +196,12 @@ func main() {
 		if preprocessError != nil {
 			return cc.String(preprocessError.StatusCode, preprocessError.Error())
 		}
-		res, err := queryMiners(cc, *request)
+		res, err := queryMiners(cc, request)
 
-		go saveRequest(db, res, *request, cc.log)
+		go saveRequest(db, res, request, cc.log)
 
 		if err != nil {
-			cc.log.Warn(err.Error())
+			cc.log.Warnw("Failed request, sending to fallback server", "error", err.Error())
 			return c.String(500, err.Error())
 		}
 
