@@ -119,7 +119,7 @@ func main() {
 
 		res, err := queryMiners(cc, request)
 		if err != nil {
-			cc.log.Warnw("Failed request, most likely un-recoverable. Not sending to fallback", "error", err.Error())
+			cc.log.Warnw("Failed request, most likely un-recoverable. Not sending to fallback", "error", err.Error(), "final", true)
 			return c.JSON(500, OpenAIError{
 				Message: err.Error(),
 				Object:  "error",
@@ -135,7 +135,7 @@ func main() {
 		cc.log.Warnw("failed request, sending to fallback", "uid", res.Miner.Uid, "hotkey", res.Miner.Hotkey, "coldkey", res.Miner.Coldkey)
 		qerr := QueryFallback(cc, db, request)
 		if qerr != nil {
-			cc.log.Warnw("Failed fallback", "error", qerr.Error())
+			cc.log.Warnw("Failed fallback", "error", qerr.Error(), "final", true)
 			return c.JSON(503, OpenAIError{
 				Message: qerr.Error(),
 				Object:  "error",
@@ -159,7 +159,7 @@ func main() {
 
 		res, err := queryMiners(cc, request)
 		if err != nil {
-			cc.log.Warnw("Failed request, most likely un-recoverable. Not sending to fallback", "error", err.Error())
+			cc.log.Warnw("Failed request, most likely un-recoverable. Not sending to fallback", "error", err.Error(), "final", true)
 			return c.JSON(500, OpenAIError{
 				Message: err.Error(),
 				Object:  "error",
@@ -175,7 +175,7 @@ func main() {
 		cc.log.Warnw("failed request, sending to fallback", "uid", res.Miner.Uid, "hotkey", res.Miner.Hotkey, "coldkey", res.Miner.Coldkey)
 		qerr := QueryFallback(cc, db, request)
 		if qerr != nil {
-			cc.log.Warnw("Failed fallback", "error", qerr.Error())
+			cc.log.Warnw("Failed fallback", "error", qerr.Error(), "final", true)
 			return c.JSON(503, OpenAIError{
 				Message: qerr.Error(),
 				Object:  "error",
