@@ -572,7 +572,6 @@ func saveRequest(db *sql.DB, res *ResponseInfo, req *RequestInfo, logger *zap.Su
 	//if err != nil {
 	//	logger.Errorf("Failed to update credits: %d - %d\n%s\n", req.StartingCredits, usedCredits, err)
 	//}
-
 	var responseJson []byte
 	var timeForFirstToken int64 = 0
 	switch res.Type {
@@ -696,8 +695,7 @@ scanner:
 			}
 			if _, found := strings.CutPrefix(token, "data: "); found {
 				if tokens == 0 {
-					timeToFirstToken := int64(time.Since(req.StartTime) / time.Millisecond)
-					c.log.Infow("time to first token", "duration", fmt.Sprintf("%d", timeToFirstToken), "from", "fallback")
+					c.log.Infow("time to first token", "duration", fmt.Sprintf("%d", time.Since(req.StartTime) / time.Millisecond), "from", "fallback")
 				}
 				tokens += 1
 			}

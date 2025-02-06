@@ -137,6 +137,21 @@ func main() {
 			return c.String(200, "")
 		}
 
+		if len(res.Data.Chat.Responses) > 15 {
+			cc.log.Warnw(
+				"failed request mid stream, canceling request",
+				"uid", res.Miner.Uid,
+				"hotkey", res.Miner.Hotkey,
+				"coldkey", res.Miner.Coldkey,
+				"error", res.Error,
+			)
+			return c.JSON(500, OpenAIError{
+				Message: "Failed mid-generation, please retry",
+				Object:  "error",
+				Type:    "InternalServerError",
+				Code:    500,
+			})
+		}
 		cc.log.Warnw(
 			"failed request, sending to fallback",
 			"uid", res.Miner.Uid,
@@ -190,6 +205,22 @@ func main() {
 		go saveRequest(db, res, request, cc.log)
 		if res.Success {
 			return c.String(200, "")
+		}
+
+		if len(res.Data.Completion.Responses) > 15 {
+			cc.log.Warnw(
+				"failed request mid stream, canceling request",
+				"uid", res.Miner.Uid,
+				"hotkey", res.Miner.Hotkey,
+				"coldkey", res.Miner.Coldkey,
+				"error", res.Error,
+			)
+			return c.JSON(500, OpenAIError{
+				Message: "Failed mid-generation, please retry",
+				Object:  "error",
+				Type:    "InternalServerError",
+				Code:    500,
+			})
 		}
 
 		cc.log.Warnw(
