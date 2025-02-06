@@ -28,7 +28,12 @@ import (
 	"go.uber.org/zap"
 )
 
-func preprocessOpenaiRequest(c *Context, db *sql.DB, endpoint string) (*RequestInfo, *RequestError) {
+func preprocessOpenaiRequest(
+	c *Context,
+	db *sql.DB,
+	endpoint string,
+) (*RequestInfo, *RequestError) {
+	startTime := time.Now()
 	c.log = c.log.With("endpoint", endpoint)
 	c.Request().Header.Add("Content-Type", "application/json")
 	bearer := c.Request().Header.Get("Authorization")
@@ -51,13 +56,14 @@ func preprocessOpenaiRequest(c *Context, db *sql.DB, endpoint string) (*RequestI
 		credits int64
 		userid  int
 	)
-	err := db.QueryRow("SELECT user.credits, user.id FROM user INNER JOIN api_key ON user.id = api_key.user_id WHERE api_key.id = ?", strings.Split(bearer, " ")[1]).Scan(&credits, &userid)
+	err := db.QueryRow("SELECT user.credits, user.id FROM user INNER JOIN api_key ON user.id = api_key.user_id WHERE api_key.id = ?", strings.Split(bearer, " ")[1]).
+		Scan(&credits, &userid)
 	if err == sql.ErrNoRows && !DEBUG {
-		c.log.Warn(bearer)
+		c.log.Warnf("no user found for bearer token %s", bearer)
 		return nil, &RequestError{401, errors.New("unauthorized")}
 	}
 	if err != nil {
-		c.log.Errorf("Error fetching user data from api key: %v", err)
+		c.log.Errorf("Error fetching user data from api key", "error", err)
 		return nil, &RequestError{500, errors.New("internal server error")}
 	}
 	// add user id to future logs
@@ -94,14 +100,22 @@ func preprocessOpenaiRequest(c *Context, db *sql.DB, endpoint string) (*RequestI
 		var req Request
 		err = json.Unmarshal(body, &req)
 		if err != nil {
-			return nil, &RequestError{400, errors.New("targon only supports basic chat requests with `role:string` and `content:string`")}
+			return nil, &RequestError{
+				400,
+				errors.New(
+					"targon only supports basic chat requests with `role:string` and `content:string`",
+				),
+			}
 		}
 	}
 
 	// Conditional Check for LLM
 	if endpoint == ENDPOINTS.CHAT || endpoint == ENDPOINTS.COMPLETION {
 		if stream, ok := payload["stream"]; !ok || !stream.(bool) {
-			return nil, &RequestError{400, errors.New("targon currently only supports streaming requests")}
+			return nil, &RequestError{
+				400,
+				errors.New("targon currently only supports streaming requests"),
+			}
 		}
 
 		if val, ok := payload["seed"]; !ok || val == nil {
@@ -126,7 +140,7 @@ func preprocessOpenaiRequest(c *Context, db *sql.DB, endpoint string) (*RequestI
 
 	body, err = json.Marshal(payload)
 	if err != nil {
-		c.log.Error(err.Error())
+		c.log.Errorw("Failed re-marshaling request", "error", err.Error())
 		return nil, &RequestError{500, errors.New("internal server error")}
 	}
 
@@ -137,6 +151,7 @@ func preprocessOpenaiRequest(c *Context, db *sql.DB, endpoint string) (*RequestI
 	}
 	res.Endpoint = endpoint
 	res.MinerHost = minerHost
+	res.StartTime = startTime
 	return res, nil
 }
 
@@ -206,18 +221,18 @@ func getMinersForModel(c *Context, model string) []Miner {
 		return nil
 	}
 	if err == context.Canceled {
-		c.log.Warn(err.Error())
+		c.log.Warn("Request canceled")
 		return nil
 	}
 	if err != nil {
-		c.log.Errorw("Failed to get model from redis: "+model, "error", err.Error())
+		c.log.Errorw("Failed to get model from redis", "error", err.Error())
 		return nil
 	}
 
 	var miners []Miner
 	err = json.Unmarshal(minerJSON.([]byte), &miners)
 	if err != nil {
-		c.log.Errorf("Failed to JSON Unmarshal: %s\n", err.Error())
+		c.log.Errorw("Failed to JSON Unmarshal", "error", err.Error())
 		return nil
 	}
 	for i := range miners {
@@ -233,7 +248,11 @@ func queryMiners(c *Context, req *RequestInfo) (*ResponseInfo, error) {
 	var requestBody RequestBody
 	err := json.Unmarshal(body, &requestBody)
 	if err != nil {
-		c.log.Errorf("Error unmarshaling request body: %s\nBody: %s\n", err.Error(), string(body))
+		c.log.Errorf(
+			fmt.Sprintf("Error unmarshaling request body: %s", string(body)),
+			"error",
+			err.Error(),
+		)
 		return nil, errors.New("invalid body")
 	}
 
@@ -312,17 +331,29 @@ func queryMiners(c *Context, req *RequestInfo) (*ResponseInfo, error) {
 	requestSignature := signMessage([]byte(message), PUBLIC_KEY, PRIVATE_KEY)
 
 	headers := map[string]string{
-		"Epistula-Version":            "2",
-		"Epistula-Timestamp":          fmt.Sprintf("%d", timestamp),
-		"Epistula-Uuid":               id,
-		"Epistula-Signed-By":          HOTKEY,
-		"Epistula-Signed-For":         miner.Hotkey,
-		"Epistula-Request-Signature":  requestSignature,
-		"Epistula-Secret-Signature-0": signMessage([]byte(fmt.Sprintf("%d.%s", timestampInterval-1, miner.Hotkey)), PUBLIC_KEY, PRIVATE_KEY),
-		"Epistula-Secret-Signature-1": signMessage([]byte(fmt.Sprintf("%d.%s", timestampInterval, miner.Hotkey)), PUBLIC_KEY, PRIVATE_KEY),
-		"Epistula-Secret-Signature-2": signMessage([]byte(fmt.Sprintf("%d.%s", timestampInterval+1, miner.Hotkey)), PUBLIC_KEY, PRIVATE_KEY),
-		"X-Targon-Model":              requestBody.Model,
-		"Content-Type":                "application/json",
+		"Epistula-Version":           "2",
+		"Epistula-Timestamp":         fmt.Sprintf("%d", timestamp),
+		"Epistula-Uuid":              id,
+		"Epistula-Signed-By":         HOTKEY,
+		"Epistula-Signed-For":        miner.Hotkey,
+		"Epistula-Request-Signature": requestSignature,
+		"Epistula-Secret-Signature-0": signMessage(
+			[]byte(fmt.Sprintf("%d.%s", timestampInterval-1, miner.Hotkey)),
+			PUBLIC_KEY,
+			PRIVATE_KEY,
+		),
+		"Epistula-Secret-Signature-1": signMessage(
+			[]byte(fmt.Sprintf("%d.%s", timestampInterval, miner.Hotkey)),
+			PUBLIC_KEY,
+			PRIVATE_KEY,
+		),
+		"Epistula-Secret-Signature-2": signMessage(
+			[]byte(fmt.Sprintf("%d.%s", timestampInterval+1, miner.Hotkey)),
+			PUBLIC_KEY,
+			PRIVATE_KEY,
+		),
+		"X-Targon-Model": requestBody.Model,
+		"Content-Type":   "application/json",
 	}
 
 	// Add Connection header for LLM requests
@@ -332,8 +363,7 @@ func queryMiners(c *Context, req *RequestInfo) (*ResponseInfo, error) {
 
 	r, err := http.NewRequest("POST", endpoint, bytes.NewBuffer(req.Body))
 	if err != nil {
-		c.log.Warnf("Failed miner request: %s\n", err.Error())
-		return &ResponseInfo{Miner: miner, Success: false}, nil
+		return &ResponseInfo{Miner: miner, Success: false, Error: err.Error()}, nil
 	}
 
 	// Set headers
@@ -357,20 +387,26 @@ func queryMiners(c *Context, req *RequestInfo) (*ResponseInfo, error) {
 	res, err := httpClient.Do(r)
 	start := time.Now()
 	if err != nil {
-		c.log.Warnf("Miner: %s %s\nError: %s\n", miner.Hotkey, miner.Coldkey, err.Error())
 		if res != nil {
 			res.Body.Close()
 		}
-		return &ResponseInfo{Miner: miner, Success: false}, nil
+		return &ResponseInfo{Miner: miner, Success: false, Error: err.Error()}, nil
 	}
 	if res.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(res.Body)
 		res.Body.Close()
-		c.log.Warnf("Miner: %s %s\nError: %s\n", miner.Hotkey, miner.Coldkey, string(body))
-		return &ResponseInfo{Miner: miner, Success: false}, nil
+		return &ResponseInfo{Miner: miner, Success: false, Error: string(body)}, nil
 	}
 
-	c.log.Infof("Miner: %s %s\n", miner.Hotkey, miner.Coldkey)
+	c.log.Infow(
+		"Sending organic to miner",
+		"hotkey",
+		miner.Hotkey,
+		"coldkey",
+		miner.Coldkey,
+		"uid",
+		miner.Uid,
+	)
 	var ri ResponseInfo
 
 	switch req.Endpoint {
@@ -394,12 +430,22 @@ func queryMiners(c *Context, req *RequestInfo) (*ResponseInfo, error) {
 				if found {
 					if tokens == 0 {
 						timeToFirstToken = int64(time.Since(start) / time.Millisecond)
+						c.log.Infow(
+							"time to first token",
+							"duration",
+							fmt.Sprintf("%d", time.Since(req.StartTime)/time.Millisecond),
+							"from",
+							"miner",
+						)
 					}
 					tokens += 1
 					var response map[string]interface{}
 					err := json.Unmarshal([]byte(token), &response)
 					if err != nil {
-						c.log.Errorf("Failed decoding token string: %s - Token: %s", err.Error(), token)
+						c.log.Errorw(
+							fmt.Sprintf("Failed decoding token %s", token),
+							"error", err.Error(),
+						)
 						continue
 					}
 					llmResponse = append(llmResponse, response)
@@ -409,9 +455,31 @@ func queryMiners(c *Context, req *RequestInfo) (*ResponseInfo, error) {
 		res.Body.Close()
 		if !finished {
 			if req.Endpoint == ENDPOINTS.CHAT {
-				return &ResponseInfo{Miner: miner, Data: Data{Chat: Chat{ResponseTokens: tokens, TimeToFirstToken: timeToFirstToken, Responses: llmResponse}}, Success: false, Type: ENDPOINTS.CHAT}, nil
+				return &ResponseInfo{
+					Miner: miner,
+					Data: Data{
+						Chat: Chat{
+							ResponseTokens:   tokens,
+							TimeToFirstToken: timeToFirstToken,
+							Responses:        llmResponse,
+						},
+					},
+					Success: false,
+					Type:    ENDPOINTS.CHAT,
+				}, nil
 			}
-			return &ResponseInfo{Miner: miner, Data: Data{Completion: Completion{ResponseTokens: tokens, TimeToFirstToken: timeToFirstToken, Responses: llmResponse}}, Success: false, Type: ENDPOINTS.COMPLETION}, nil
+			return &ResponseInfo{
+				Miner: miner,
+				Data: Data{
+					Completion: Completion{
+						ResponseTokens:   tokens,
+						TimeToFirstToken: timeToFirstToken,
+						Responses:        llmResponse,
+					},
+				},
+				Success: false,
+				Type:    ENDPOINTS.COMPLETION,
+			}, nil
 		}
 		ri = ResponseInfo{
 			Miner:   miner,
@@ -420,21 +488,33 @@ func queryMiners(c *Context, req *RequestInfo) (*ResponseInfo, error) {
 			Type: req.Endpoint,
 		}
 		if req.Endpoint == ENDPOINTS.CHAT {
-			ri.Data = Data{Chat: Chat{Responses: llmResponse, ResponseTokens: tokens, TimeToFirstToken: timeToFirstToken}}
+			ri.Data = Data{
+				Chat: Chat{
+					Responses:        llmResponse,
+					ResponseTokens:   tokens,
+					TimeToFirstToken: timeToFirstToken,
+				},
+			}
 		}
 		if req.Endpoint == ENDPOINTS.COMPLETION {
-			ri.Data = Data{Completion: Completion{Responses: llmResponse, ResponseTokens: tokens, TimeToFirstToken: timeToFirstToken}}
+			ri.Data = Data{
+				Completion: Completion{
+					Responses:        llmResponse,
+					ResponseTokens:   tokens,
+					TimeToFirstToken: timeToFirstToken,
+				},
+			}
 		}
 	case ENDPOINTS.IMAGE:
 		responseBytes, err := io.ReadAll(res.Body)
 		if err != nil {
-			c.log.Errorf("Failed to read image response: %s", err.Error())
+			c.log.Errorw("Failed to read image response", "error", err.Error())
 			return &ResponseInfo{Miner: miner, Success: false, Type: ENDPOINTS.IMAGE}, nil
 		}
 
 		err = json.Unmarshal(responseBytes, &imageResponse)
 		if err != nil {
-			c.log.Errorf("Failed decoding image json: %s", string(responseBytes))
+			c.log.Errorf("Failed decoding image json", "error", string(responseBytes))
 		}
 		res.Body.Close()
 		ri = ResponseInfo{
@@ -450,7 +530,12 @@ func queryMiners(c *Context, req *RequestInfo) (*ResponseInfo, error) {
 
 	totalTime := int64(time.Since(start) / time.Millisecond)
 	ri.TotalTime = totalTime
-	c.log.Infow(fmt.Sprintf("Finished Request in %dms", totalTime), "final", "true")
+	c.log.Infow(
+		"Finished Request",
+		"final", "true",
+		"duration", fmt.Sprintf("%d", time.Since(req.StartTime)/time.Millisecond),
+		"tokens", tokens,
+	)
 	return &ri, nil
 }
 
@@ -470,7 +555,8 @@ func saveRequest(db *sql.DB, res *ResponseInfo, req *RequestInfo, logger *zap.Su
 		logger.Error("No model in body")
 		return
 	}
-	err = db.QueryRow("SELECT id, cpt FROM model WHERE name = ?", model.(string)).Scan(&model_id, &cpt)
+	err = db.QueryRow("SELECT id, cpt FROM model WHERE name = ?", model.(string)).
+		Scan(&model_id, &cpt)
 	if err != nil {
 		logger.Warnw("Failed to get model "+model.(string), "error", err.Error())
 		return
@@ -540,7 +626,8 @@ func QueryFallback(c *Context, db *sql.DB, req *RequestInfo) *RequestError {
 		return &RequestError{400, errors.New("invalid body")}
 	}
 	var fallback_server string
-	err = db.QueryRow("SELECT model.fallback_server FROM model WHERE model.name = ?", requestBody.Model).Scan(&fallback_server)
+	err = db.QueryRow("SELECT model.fallback_server FROM model WHERE model.name = ?", requestBody.Model).
+		Scan(&fallback_server)
 	if err == sql.ErrNoRows && !DEBUG {
 		return &RequestError{400, fmt.Errorf("no model found for %s", requestBody.Model)}
 	}
@@ -579,7 +666,6 @@ func QueryFallback(c *Context, db *sql.DB, req *RequestInfo) *RequestError {
 	}
 	httpClient := http.Client{Transport: tr, Timeout: 2 * time.Minute}
 	res, err := httpClient.Do(r)
-	start := time.Now()
 	if res != nil {
 		defer res.Body.Close()
 	}
@@ -595,6 +681,7 @@ func QueryFallback(c *Context, db *sql.DB, req *RequestInfo) *RequestError {
 	}
 	reader := bufio.NewScanner(res.Body)
 
+	tokens := 0
 scanner:
 	for reader.Scan() {
 		select {
@@ -607,10 +694,21 @@ scanner:
 			if token == "data: [DONE]" {
 				break scanner
 			}
+			if _, found := strings.CutPrefix(token, "data: "); found {
+				if tokens == 0 {
+					timeToFirstToken := int64(time.Since(req.StartTime) / time.Millisecond)
+					c.log.Infow("time to first token", "duration", fmt.Sprintf("%d", timeToFirstToken), "from", "fallback")
+				}
+				tokens += 1
+			}
 		}
 	}
-	totalTime := int64(time.Since(start) / time.Millisecond)
-	c.log.Infow(fmt.Sprintf("Finished fallback request in %dms", totalTime), "final", "true")
+	c.log.Infow(
+		"Finished fallback request",
+		"final", "true",
+		"duration", fmt.Sprintf("%d", time.Since(req.StartTime)/time.Millisecond),
+		"tokens", tokens,
+	)
 	return nil
 }
 

@@ -1,6 +1,9 @@
 package main
 
-import "fmt"
+import (
+	"fmt"
+	"time"
+)
 
 type RequestError struct {
 	StatusCode int
@@ -40,6 +43,7 @@ type RequestInfo struct {
 	Miner           *int
 	MinerHost       string
 	Id              string
+	StartTime       time.Time
 }
 
 // Organize Fields Dependent on Type of Response
@@ -48,8 +52,9 @@ type ResponseInfo struct {
 	Success   bool
 	TotalTime int64
 
-	Type string
-	Data Data
+	Type  string
+	Data  Data
+	Error string
 }
 
 type Data struct {

@@ -119,7 +119,12 @@ func main() {
 
 		res, err := queryMiners(cc, request)
 		if err != nil {
-			cc.log.Warnw("Failed request, most likely un-recoverable. Not sending to fallback", "error", err.Error(), "final", "true")
+			cc.log.Warnw(
+				"Failed request, most likely un-recoverable. Not sending to fallback",
+				"error", err.Error(),
+				"final", "true",
+				"duration", fmt.Sprintf("%d", time.Since(request.StartTime)/time.Millisecond),
+			)
 			return c.JSON(500, OpenAIError{
 				Message: err.Error(),
 				Object:  "error",
@@ -132,10 +137,21 @@ func main() {
 			return c.String(200, "")
 		}
 
-		cc.log.Warnw("failed request, sending to fallback", "uid", res.Miner.Uid, "hotkey", res.Miner.Hotkey, "coldkey", res.Miner.Coldkey)
+		cc.log.Warnw(
+			"failed request, sending to fallback",
+			"uid", res.Miner.Uid,
+			"hotkey", res.Miner.Hotkey,
+			"coldkey", res.Miner.Coldkey,
+			"error", res.Error,
+		)
 		qerr := QueryFallback(cc, db, request)
 		if qerr != nil {
-			cc.log.Warnw("Failed fallback", "error", qerr.Error(), "final", "true")
+			cc.log.Warnw(
+				"Failed fallback",
+				"error", qerr.Error(),
+				"final", "true",
+				"duration", fmt.Sprintf("%d", time.Since(request.StartTime)/time.Millisecond),
+			)
 			return c.JSON(503, OpenAIError{
 				Message: qerr.Error(),
 				Object:  "error",
@@ -159,7 +175,11 @@ func main() {
 
 		res, err := queryMiners(cc, request)
 		if err != nil {
-			cc.log.Warnw("Failed request, most likely un-recoverable. Not sending to fallback", "error", err.Error(), "final", "true")
+			cc.log.Warnw(
+				"Failed request, most likely un-recoverable. Not sending to fallback",
+				"error", err.Error(),
+				"final", "true",
+			)
 			return c.JSON(500, OpenAIError{
 				Message: err.Error(),
 				Object:  "error",
@@ -172,7 +192,13 @@ func main() {
 			return c.String(200, "")
 		}
 
-		cc.log.Warnw("failed request, sending to fallback", "uid", res.Miner.Uid, "hotkey", res.Miner.Hotkey, "coldkey", res.Miner.Coldkey)
+		cc.log.Warnw(
+			"failed request, sending to fallback",
+			"uid", res.Miner.Uid,
+			"hotkey", res.Miner.Hotkey,
+			"coldkey", res.Miner.Coldkey,
+			"error", res.Error,
+		)
 		qerr := QueryFallback(cc, db, request)
 		if qerr != nil {
 			cc.log.Warnw("Failed fallback", "error", qerr.Error(), "final", "true")
@@ -206,8 +232,16 @@ func main() {
 		}
 
 		if !res.Success {
-			cc.log.Warnf("Miner %d: %s %s\n Failed request\n", res.Miner.Uid, res.Miner.Hotkey, res.Miner.Coldkey)
-			return c.String(500, fmt.Sprintf("Miner UID %d Failed Request. Try Again.", res.Miner.Uid))
+			cc.log.Warnf(
+				"Miner %d: %s %s\n Failed request\n",
+				res.Miner.Uid,
+				res.Miner.Hotkey,
+				res.Miner.Coldkey,
+			)
+			return c.String(
+				500,
+				fmt.Sprintf("Miner UID %d Failed Request. Try Again.", res.Miner.Uid),
+			)
 		}
 
 		// Send the image response - OpenAI image object
@@ -225,7 +259,7 @@ func main() {
 			FROM model WHERE enabled = 1
 		`)
 		if err != nil {
-			cc.log.Error("Failed to get models: " + err.Error())
+			cc.log.Errorw("Failed to get models", "error", err.Error())
 			return c.String(500, "Failed to get models")
 		}
 		defer rows.Close()
@@ -235,13 +269,13 @@ func main() {
 			var model Model
 			var createdAtStr string
 			if err := rows.Scan(&model.ID, &createdAtStr); err != nil {
-				cc.log.Error("Failed to scan model row: " + err.Error())
+				cc.log.Errorw("Failed to scan model row", "error", err.Error())
 				return c.String(500, "Failed to get models")
 			}
 
 			createdAt, err := time.Parse("2006-01-02 15:04:05", createdAtStr)
 			if err != nil {
-				cc.log.Error("Failed to parse created_at: " + err.Error())
+				cc.log.Errorw("Failed to parse created_at", "error", err.Error())
 				return c.String(500, "Failed to get models")
 			}
 
@@ -253,7 +287,7 @@ func main() {
 		}
 
 		if err = rows.Err(); err != nil {
-			cc.log.Error("Error iterating model rows: " + err.Error())
+			cc.log.Error("Error iterating model rows", "error", err.Error())
 			return c.String(500, "Failed to get models")
 		}
 
