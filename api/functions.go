@@ -119,6 +119,9 @@ func preprocessOpenaiRequest(c *Context, db *sql.DB, endpoint string) (*RequestI
 		if logprobs, ok := payload["logprobs"]; !ok || !logprobs.(bool) {
 			payload["logprobs"] = true
 		}
+		payload["stream_options"] = map[string]interface{}{
+			"include_usage": true,
+		}
 	}
 
 	body, err = json.Marshal(payload)
