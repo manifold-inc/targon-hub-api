@@ -123,6 +123,7 @@ func main() {
 				"Failed request, most likely un-recoverable. Not sending to fallback",
 				"error", err.Error(),
 				"final", "true",
+				"status", "failed",
 				"duration", fmt.Sprintf("%d", time.Since(request.StartTime)/time.Millisecond),
 			)
 			return c.JSON(500, OpenAIError{
@@ -145,6 +146,7 @@ func main() {
 				"coldkey", res.Miner.Coldkey,
 				"error", res.Error,
 				"final", "true",
+				"status", "partial",
 				"duration", fmt.Sprintf("%d", time.Since(request.StartTime)/time.Millisecond),
 			)
 			return c.JSON(500, OpenAIError{
@@ -167,6 +169,7 @@ func main() {
 				"Failed fallback",
 				"error", qerr.Error(),
 				"final", "true",
+				"status", "failed",
 				"duration", fmt.Sprintf("%d", time.Since(request.StartTime)/time.Millisecond),
 			)
 			return c.JSON(503, OpenAIError{
@@ -194,6 +197,7 @@ func main() {
 		if err != nil {
 			cc.log.Warnw(
 				"Failed request, most likely un-recoverable. Not sending to fallback",
+				"status", "failed",
 				"error", err.Error(),
 				"final", "true",
 			)
@@ -217,6 +221,7 @@ func main() {
 				"coldkey", res.Miner.Coldkey,
 				"error", res.Error,
 				"final", "true",
+				"status", "partial",
 				"duration", fmt.Sprintf("%d", time.Since(request.StartTime)/time.Millisecond),
 			)
 			return c.JSON(500, OpenAIError{
@@ -236,7 +241,7 @@ func main() {
 		)
 		qerr := QueryFallback(cc, db, request)
 		if qerr != nil {
-			cc.log.Warnw("Failed fallback", "error", qerr.Error(), "final", "true")
+			cc.log.Warnw("Failed fallback", "error", qerr.Error(), "final", "true", "status", "failed")
 			return c.JSON(503, OpenAIError{
 				Message: qerr.Error(),
 				Object:  "error",

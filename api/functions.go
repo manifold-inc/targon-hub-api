@@ -533,6 +533,7 @@ func queryMiners(c *Context, req *RequestInfo) (*ResponseInfo, error) {
 	c.log.Infow(
 		"Finished Request",
 		"final", "true",
+		"status", "success",
 		"duration", fmt.Sprintf("%d", time.Since(req.StartTime)/time.Millisecond),
 		"tokens", tokens,
 	)
@@ -704,6 +705,7 @@ scanner:
 	c.log.Infow(
 		"Finished fallback request",
 		"final", "true",
+		"status", "success",
 		"duration", fmt.Sprintf("%d", time.Since(req.StartTime)/time.Millisecond),
 		"tokens", tokens,
 	)
