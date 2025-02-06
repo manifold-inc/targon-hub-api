@@ -343,6 +343,17 @@ func queryMiners(c *Context, req *RequestInfo) (*ResponseInfo, error) {
 	r.Close = true
 	r = r.WithContext(c.Request().Context())
 
+	ctx, cancel := context.WithCancel(c.Request().Context())
+	defer cancel()
+	var timer *time.Timer
+
+	if req.Endpoint == ENDPOINTS.CHAT || req.Endpoint == ENDPOINTS.COMPLETION {
+		r = r.WithContext(ctx)
+		timer = time.AfterFunc(4*time.Second, func() {
+			cancel()
+		})
+	}
+
 	res, err := httpClient.Do(r)
 	start := time.Now()
 	if err != nil {
@@ -371,6 +382,7 @@ func queryMiners(c *Context, req *RequestInfo) (*ResponseInfo, error) {
 			case <-c.Request().Context().Done():
 				return &ResponseInfo{}, errors.New("request canceled")
 			default:
+				timer.Stop()
 				token := reader.Text()
 				fmt.Fprint(c.Response(), token+"\n\n")
 				c.Response().Flush()
