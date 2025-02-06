@@ -144,6 +144,8 @@ func main() {
 				"hotkey", res.Miner.Hotkey,
 				"coldkey", res.Miner.Coldkey,
 				"error", res.Error,
+				"final", "true",
+				"duration", fmt.Sprintf("%d", time.Since(request.StartTime)/time.Millisecond),
 			)
 			return c.JSON(500, OpenAIError{
 				Message: "Failed mid-generation, please retry",
@@ -214,6 +216,8 @@ func main() {
 				"hotkey", res.Miner.Hotkey,
 				"coldkey", res.Miner.Coldkey,
 				"error", res.Error,
+				"final", "true",
+				"duration", fmt.Sprintf("%d", time.Since(request.StartTime)/time.Millisecond),
 			)
 			return c.JSON(500, OpenAIError{
 				Message: "Failed mid-generation, please retry",
