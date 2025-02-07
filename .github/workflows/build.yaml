@@ -1,0 +1,76 @@
+name: Build and Push Docker Images to GHCR
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Delete huge unnecessary tools folder
+        run: rm -rf /opt/hostedtoolcache
+
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          install: true
+          platforms: linux/amd64,linux/arm64
+
+      - name: Log in to GitHub Container Registry
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u $GITHUB_ACTOR --password-stdin
+
+      - name: Extract Image Name from Repository
+        id: repo_name
+        run: echo "IMAGE_NAME=ghcr.io/${{ github.repository }}" >> $GITHUB_ENV
+
+      - name: Identify Services to Build
+        id: build_services
+        run: |
+          # List all services in docker-compose.yml
+          ALL_SERVICES=$(docker compose config --services)
+
+          # Define the services that should NOT be built (external images)
+          SKIP_SERVICES="cache traefik vector"
+
+          # Filter out services that are pulled instead of built
+          SERVICES_TO_BUILD=""
+          for service in $ALL_SERVICES; do
+            IMAGE=$(docker compose config | yq eval ".services[\"$service\"].image" -)
+            if echo "$SKIP_SERVICES" | grep -wq "$service"; then
+              echo "Skipping $service (prebuilt image: $IMAGE)"
+            else
+              SERVICES_TO_BUILD="$SERVICES_TO_BUILD $service"
+            fi
+          done
+
+          echo "SERVICES_TO_BUILD=$SERVICES_TO_BUILD" >> $GITHUB_ENV
+
+      - name: Build and Tag Docker Images
+        run: |
+          for service in $SERVICES_TO_BUILD; do
+            IMAGE="$IMAGE_NAME/$service"
+            docker buildx build \
+              --load \
+              --platform linux/amd64 \
+              --tag $IMAGE:latest \
+              --tag $IMAGE:${{ github.sha }} \
+              --file $service/Dockerfile ./$service
+          done
+
+      - name: Push Docker Images to GHCR
+        if: github.event_name == 'push'  # Avoid pushing images on PRs
+        run: |
+          for service in $SERVICES_TO_BUILD; do
+            IMAGE="$IMAGE_NAME/$service"
+            docker push $IMAGE:latest
+            docker push $IMAGE:${{ github.sha }}
+          done
