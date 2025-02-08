@@ -30,23 +30,23 @@ jobs:
 
       - name: Extract Image Name from Repository
         id: repo_name
-        run: echo "IMAGE_NAME=ghcr.io/${{ github.repository }}" >> $GITHUB_ENV
+        run: echo "IMAGE_NAME_PREFIX=ghcr.io/${{ github.repository }}" >> $GITHUB_ENV
 
       - name: Identify Services to Build
         id: build_services
         run: |
+          cp sample.env .env
           # List all services in docker-compose.yml
           ALL_SERVICES=$(docker compose config --services)
 
-          # Define the services that should NOT be built (external images)
-          SKIP_SERVICES="cache traefik vector"
-
-          # Filter out services that are pulled instead of built
           SERVICES_TO_BUILD=""
+
+          # Iterate through all services
           for service in $ALL_SERVICES; do
-            IMAGE=$(docker compose config | yq eval ".services[\"$service\"].image" -)
-            if echo "$SKIP_SERVICES" | grep -wq "$service"; then
-              echo "Skipping $service (prebuilt image: $IMAGE)"
+            HAS_BUILD=$(docker compose config | yq eval ".services[\"$service\"].build" -)
+            echo "$HAS_BUILD"
+            if [ -z "$HAS_BUILD" ] || [ "$HAS_BUILD" == "null" ]; then
+              echo "Skipping $service (no build context defined)"
             else
               SERVICES_TO_BUILD="$SERVICES_TO_BUILD $service"
             fi
@@ -57,7 +57,7 @@ jobs:
       - name: Build and Tag Docker Images
         run: |
           for service in $SERVICES_TO_BUILD; do
-            IMAGE="$IMAGE_NAME/$service"
+            IMAGE="$IMAGE_NAME_PREFIX/$service"
             docker buildx build \
               --load \
               --platform linux/amd64 \
@@ -70,7 +70,7 @@ jobs:
         if: github.event_name == 'push'  # Avoid pushing images on PRs
         run: |
           for service in $SERVICES_TO_BUILD; do
-            IMAGE="$IMAGE_NAME/$service"
+            IMAGE="$IMAGE_NAME_PREFIX/$service"
             docker push $IMAGE:latest
             docker push $IMAGE:${{ github.sha }}
           done
