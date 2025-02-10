@@ -442,7 +442,7 @@ func queryMiners(c *Context, req *RequestInfo) (*ResponseInfo, error) {
 					var response map[string]interface{}
 					err := json.Unmarshal([]byte(token), &response)
 					if err != nil {
-						c.log.Errorw(
+						c.log.Warnw(
 							fmt.Sprintf("Failed decoding token %s", token),
 							"error", err.Error(),
 						)
@@ -696,7 +696,7 @@ scanner:
 			}
 			if _, found := strings.CutPrefix(token, "data: "); found {
 				if tokens == 0 {
-					c.log.Infow("time to first token", "duration", fmt.Sprintf("%d", time.Since(req.StartTime) / time.Millisecond), "from", "fallback")
+					c.log.Infow("time to first token", "duration", fmt.Sprintf("%d", time.Since(req.StartTime)/time.Millisecond), "from", "fallback")
 				}
 				tokens += 1
 			}
