@@ -7,6 +7,7 @@ require (
 	github.com/aidarkhanov/nanoid v1.0.8
 	github.com/go-sql-driver/mysql v1.8.1
 	github.com/google/uuid v1.6.0
+	github.com/jmcvetta/randutil v0.0.0-20150817122601-2bb1b664bcff
 	github.com/labstack/echo/v4 v4.11.4
 	github.com/nitishm/go-rejson/v4 v4.2.0
 	github.com/redis/go-redis/v9 v9.5.1

@@ -163,6 +163,9 @@ func main() {
 			"coldkey", res.Miner.Coldkey,
 			"error", res.Error,
 		)
+		if DEBUG{
+			return c.String(500, "")
+		}
 		qerr := QueryFallback(cc, db, request)
 		if qerr != nil {
 			cc.log.Warnw(
@@ -239,6 +242,9 @@ func main() {
 			"coldkey", res.Miner.Coldkey,
 			"error", res.Error,
 		)
+		if DEBUG{
+			return c.String(500, "")
+		}
 		qerr := QueryFallback(cc, db, request)
 		if qerr != nil {
 			cc.log.Warnw("Failed fallback", "error", qerr.Error(), "final", "true", "status", "failed")

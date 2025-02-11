@@ -23,6 +23,7 @@ import (
 
 	"github.com/ChainSafe/go-schnorrkel"
 	"github.com/google/uuid"
+	"github.com/jmcvetta/randutil"
 	"github.com/nitishm/go-rejson/v4"
 	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
@@ -210,36 +211,47 @@ func sha256Hash(str []byte) string {
 	return hex.EncodeToString(sum)
 }
 
-func getMinersForModel(c *Context, model string) []Miner {
+func getMinerForModel(c *Context, model string, specific_uid *int) (*Miner, error) {
+	// Weighted random based on miner incentive
 	rh := rejson.NewReJSONHandler()
 	rh.SetGoRedisClientWithContext(c.Request().Context(), client)
 	minerJSON, err := rh.JSONGet(model, ".")
+	var choices []randutil.Choice
 
 	// Model not available
 	if err == redis.Nil {
 		c.log.Warnf("No miners running %s", model)
-		return nil
+		return nil, errors.New("no miners")
 	}
 	if err == context.Canceled {
 		c.log.Warn("Request canceled")
-		return nil
+		return nil, errors.New("request canceled")
 	}
 	if err != nil {
 		c.log.Errorw("Failed to get model from redis", "error", err.Error())
-		return nil
+		return nil, errors.New("failed to get miners from redis")
 	}
 
 	var miners []Miner
 	err = json.Unmarshal(minerJSON.([]byte), &miners)
 	if err != nil {
 		c.log.Errorw("Failed to JSON Unmarshal", "error", err.Error())
-		return nil
+		return nil, errors.New("failed to unmarshall json")
 	}
 	for i := range miners {
-		j := rand.Intn(i + 1)
-		miners[i], miners[j] = miners[j], miners[i]
+		if specific_uid != nil && miners[i].Uid == *specific_uid {
+			return &miners[i], nil
+		}
+		ch := randutil.Choice{Item: miners[i], Weight: int(miners[i].IncentiveScaled)}
+		choices = append(choices, ch)
 	}
-	return miners
+	choice, err := randutil.WeightedChoice(choices)
+	if err != nil {
+		c.log.Errorw("Failed getting weighted random choice", "error", err.Error())
+		return &miners[0], nil
+	}
+	miner := choice.Item.(Miner)
+	return &miner, nil
 }
 
 func queryMiners(c *Context, req *RequestInfo) (*ResponseInfo, error) {
@@ -273,30 +285,11 @@ func queryMiners(c *Context, req *RequestInfo) (*ResponseInfo, error) {
 
 	// Only get miners from redis if we dont specify host
 	if len(req.MinerHost) == 0 {
-		miners := getMinersForModel(c, requestBody.Model)
-		if len(miners) == 0 {
+		m, err := getMinerForModel(c, requestBody.Model, req.Miner)
+		if err != nil {
 			return nil, errors.New("no miners")
 		}
-
-		miner = miners[0]
-
-		// Call specific miner if passed
-		if req.Miner != nil {
-			c.log.Infof("Attempting to find miner %d", *req.Miner)
-			found := false
-			for i := range miners {
-				m := miners[i]
-				if m.Uid == *req.Miner {
-					miner = m
-					found = true
-					break
-				}
-			}
-			if !found {
-				return nil, errors.New("could not find miner with uid")
-			}
-		}
-
+		miner = *m
 	}
 
 	tr := &http.Transport{

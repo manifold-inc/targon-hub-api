@@ -19,11 +19,12 @@ type RequestBody struct {
 }
 
 type Miner struct {
-	Ip      string `json:"ip,omitempty"`
-	Port    int    `json:"port,omitempty"`
-	Hotkey  string `json:"hotkey,omitempty"`
-	Coldkey string `json:"coldkey,omitempty"`
-	Uid     int    `json:"uid,omitempty"`
+	Ip              string  `json:"ip,omitempty"`
+	Port            int     `json:"port,omitempty"`
+	Hotkey          string  `json:"hotkey,omitempty"`
+	Coldkey         string  `json:"coldkey,omitempty"`
+	Uid             int     `json:"uid,omitempty"`
+	IncentiveScaled float64 `json:"incentive_scaled"`
 }
 
 type Request struct {
