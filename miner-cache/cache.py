@@ -57,13 +57,13 @@ async def sync_miners():
             if miner_models.get(model) is None:
                 miner_models[model] = []
             m = {
-                    "ip": axon.ip,
-                    "port": axon.port,
-                    "hotkey": axon.hotkey,
-                    "coldkey": axon.coldkey,
-                    "uid": uid,
-                    "incentive_scaled": int(metagraph.incentive[uid] * 1000),
-                }
+                "ip": axon.ip,
+                "port": axon.port,
+                "hotkey": axon.hotkey,
+                "coldkey": axon.coldkey,
+                "uid": uid,
+                "incentive_scaled": int(metagraph.incentive[uid] * 1000),
+            }
             miner_models[model].append(m)
             print(m)
     for model in miner_models.keys():
