@@ -25,7 +25,7 @@ var (
 	DEBUG            bool
 	FALLBACK_API_KEY string
 
-	client *redis.Client
+	REDIS_CLIENT *redis.Client
 )
 
 var (
@@ -100,12 +100,12 @@ func main() {
 	}
 	defer db.Close()
 
-	client = redis.NewClient(&redis.Options{
+	REDIS_CLIENT = redis.NewClient(&redis.Options{
 		Addr:     fmt.Sprintf("%s:%s", REDIS_HOST, REDIS_PORT),
 		Password: "",
 		DB:       0,
 	})
-	defer client.Close()
+	defer REDIS_CLIENT.Close()
 
 	e.POST("/v1/chat/completions", func(c echo.Context) error {
 		cc := c.(*Context)

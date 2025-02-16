@@ -29,6 +29,15 @@ import (
 	"go.uber.org/zap"
 )
 
+// TODO figure out params
+// Returns true / false for allowed / rate limited
+const REQUESTS_PER_HOUR = 60 * 30
+func CheckRateLimit() (bool, error) {
+	// TODO check if user is rate limited
+	// TODO log connection for future rate limit checks
+	return false, nil
+}
+
 func preprocessOpenaiRequest(
 	c *Context,
 	db *sql.DB,
@@ -69,6 +78,9 @@ func preprocessOpenaiRequest(
 	}
 	// add user id to future logs
 	c.log = c.log.With("user_id", userid)
+
+	// TODO rate limit
+
 	var payload map[string]interface{}
 	body, _ := io.ReadAll(c.Request().Body)
 	err = json.Unmarshal(body, &payload)
@@ -214,7 +226,7 @@ func sha256Hash(str []byte) string {
 func getMinerForModel(c *Context, model string, specific_uid *int) (*Miner, error) {
 	// Weighted random based on miner incentive
 	rh := rejson.NewReJSONHandler()
-	rh.SetGoRedisClientWithContext(c.Request().Context(), client)
+	rh.SetGoRedisClientWithContext(c.Request().Context(), REDIS_CLIENT)
 	minerJSON, err := rh.JSONGet(model, ".")
 	var choices []randutil.Choice
 
