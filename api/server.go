@@ -94,7 +94,7 @@ func main() {
 			return c.String(500, "Internal Server Error")
 		},
 	}))
-	SQL_CLIENT, _ := sql.Open("mysql", DSN)
+	SQL_CLIENT, _ = sql.Open("mysql", DSN)
 	err = SQL_CLIENT.Ping()
 	if err != nil {
 		sugar.Error(err.Error())

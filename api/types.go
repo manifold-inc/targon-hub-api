@@ -28,7 +28,8 @@ type Miner struct {
 }
 
 type Request struct {
-	Messages []ChatMessage `json:"messages"`
+	Messages  []ChatMessage `json:"messages"`
+	MaxTokens uint64        `json:"max_tokens"`
 }
 
 type ChatMessage struct {
@@ -45,6 +46,7 @@ type RequestInfo struct {
 	MinerHost       string
 	Id              string
 	StartTime       time.Time
+	Chargeable      bool
 }
 
 // Organize Fields Dependent on Type of Response

@@ -53,11 +53,12 @@ func preprocessOpenaiRequest(
 	}
 
 	var (
-		credits int64
-		userid  int
+		credits    int64
+		userid     int
+		chargeable bool
 	)
-	err := SQL_CLIENT.QueryRow("SELECT user.credits, user.id FROM user INNER JOIN api_key ON user.id = api_key.user_id WHERE api_key.id = ?", strings.Split(bearer, " ")[1]).
-		Scan(&credits, &userid)
+	err := SQL_CLIENT.QueryRow("SELECT user.credits, user.id, user.chargeable FROM user INNER JOIN api_key ON user.id = api_key.user_id WHERE api_key.id = ?", strings.Split(bearer, " ")[1]).
+		Scan(&credits, &userid, &chargeable)
 	if err == sql.ErrNoRows && !DEBUG {
 		c.log.Warnf("no user found for bearer token %s", bearer)
 		return nil, &RequestError{401, errors.New("unauthorized")}
@@ -96,7 +97,8 @@ func preprocessOpenaiRequest(
 		}
 	}
 
-	if endpoint == ENDPOINTS.CHAT {
+	// Conditional Check for LLM
+	if endpoint == ENDPOINTS.CHAT || endpoint == ENDPOINTS.COMPLETION {
 		var req Request
 		err = json.Unmarshal(body, &req)
 		if err != nil {
@@ -107,15 +109,8 @@ func preprocessOpenaiRequest(
 				),
 			}
 		}
-	}
-
-	// Conditional Check for LLM
-	if endpoint == ENDPOINTS.CHAT || endpoint == ENDPOINTS.COMPLETION {
-		if stream, ok := payload["stream"]; !ok || !stream.(bool) {
-			return nil, &RequestError{
-				400,
-				errors.New("targon currently only supports streaming requests"),
-			}
+		if (req.MaxTokens > uint64(credits) || 512 > uint64(credits)) && chargeable {
+			return nil, &RequestError{400, errors.New("not enough credits")}
 		}
 
 		if val, ok := payload["seed"]; !ok || val == nil {
@@ -144,7 +139,7 @@ func preprocessOpenaiRequest(
 		return nil, &RequestError{500, errors.New("internal server error")}
 	}
 
-	res := &RequestInfo{Body: body, UserId: userid, StartingCredits: credits, Id: c.reqid}
+	res := &RequestInfo{Body: body, UserId: userid, StartingCredits: credits, Id: c.reqid, Chargeable: chargeable}
 	miner_uid, err := strconv.Atoi(miner)
 	if err == nil {
 		res.Miner = &miner_uid
@@ -558,13 +553,26 @@ func saveRequest(res *ResponseInfo, req *RequestInfo, logger *zap.SugaredLogger)
 	// Re-add later vv
 
 	// Update credits
-	// usedCredits := res.ResponseTokens * cpt
-	//_, err = SQL_CLIENT.Exec("UPDATE user SET credits=? WHERE id=?",
-	//	max(req.StartingCredits-int64(usedCredits), 0),
-	//	req.UserId)
-	//if err != nil {
-	//	logger.Errorf("Failed to update credits: %d - %d\n%s\n", req.StartingCredits, usedCredits, err)
-	//}
+	usedCredits := 0
+	if res.Type == ENDPOINTS.COMPLETION {
+		usedCredits = res.Data.Completion.ResponseTokens * cpt
+	}
+	if res.Type == ENDPOINTS.CHAT {
+		usedCredits = res.Data.Chat.ResponseTokens * cpt
+	}
+	if !req.Chargeable {
+		usedCredits = 0
+	}
+
+	if usedCredits != 0 {
+		_, err = SQL_CLIENT.Exec("UPDATE user SET credits=? WHERE id=?",
+			max(req.StartingCredits-int64(usedCredits), 0),
+			req.UserId)
+		if err != nil {
+			logger.Errorf("Failed to update credits: %d - %d\n%s\n", req.StartingCredits, usedCredits, err)
+		}
+	}
+
 	var responseJson []byte
 	var timeForFirstToken int64 = 0
 	switch res.Type {
