@@ -25,7 +25,8 @@ var (
 	DEBUG            bool
 	FALLBACK_API_KEY string
 
-	client *redis.Client
+	REDIS_CLIENT *redis.Client
+	SQL_CLIENT   *sql.DB
 )
 
 var (
@@ -93,26 +94,26 @@ func main() {
 			return c.String(500, "Internal Server Error")
 		},
 	}))
-	db, _ := sql.Open("mysql", DSN)
-	err = db.Ping()
+	SQL_CLIENT, _ := sql.Open("mysql", DSN)
+	err = SQL_CLIENT.Ping()
 	if err != nil {
 		sugar.Error(err.Error())
 	}
-	defer db.Close()
+	defer SQL_CLIENT.Close()
 
-	client = redis.NewClient(&redis.Options{
+	REDIS_CLIENT = redis.NewClient(&redis.Options{
 		Addr:     fmt.Sprintf("%s:%s", REDIS_HOST, REDIS_PORT),
 		Password: "",
 		DB:       0,
 	})
-	defer client.Close()
+	defer REDIS_CLIENT.Close()
 
 	e.POST("/v1/chat/completions", func(c echo.Context) error {
 		cc := c.(*Context)
 		defer func() {
 			_ = cc.log.Sync()
 		}()
-		request, preprocessError := preprocessOpenaiRequest(cc, db, ENDPOINTS.CHAT)
+		request, preprocessError := preprocessOpenaiRequest(cc, ENDPOINTS.CHAT)
 		if preprocessError != nil {
 			return cc.String(preprocessError.StatusCode, preprocessError.Error())
 		}
@@ -133,7 +134,7 @@ func main() {
 				Code:    500,
 			})
 		}
-		go saveRequest(db, res, request, cc.log)
+		go saveRequest(res, request, cc.log)
 		if res.Success {
 			return c.String(200, "")
 		}
@@ -163,10 +164,10 @@ func main() {
 			"coldkey", res.Miner.Coldkey,
 			"error", res.Error,
 		)
-		if DEBUG{
+		if DEBUG {
 			return c.String(500, "")
 		}
-		qerr := QueryFallback(cc, db, request)
+		qerr := QueryFallback(cc, request)
 		if qerr != nil {
 			cc.log.Warnw(
 				"Failed fallback",
@@ -191,7 +192,7 @@ func main() {
 		defer func() {
 			_ = cc.log.Sync()
 		}()
-		request, preprocessError := preprocessOpenaiRequest(cc, db, ENDPOINTS.COMPLETION)
+		request, preprocessError := preprocessOpenaiRequest(cc, ENDPOINTS.COMPLETION)
 		if preprocessError != nil {
 			return cc.String(preprocessError.StatusCode, preprocessError.Error())
 		}
@@ -211,7 +212,7 @@ func main() {
 				Code:    500,
 			})
 		}
-		go saveRequest(db, res, request, cc.log)
+		go saveRequest(res, request, cc.log)
 		if res.Success {
 			return c.String(200, "")
 		}
@@ -242,10 +243,10 @@ func main() {
 			"coldkey", res.Miner.Coldkey,
 			"error", res.Error,
 		)
-		if DEBUG{
+		if DEBUG {
 			return c.String(500, "")
 		}
-		qerr := QueryFallback(cc, db, request)
+		qerr := QueryFallback(cc, request)
 		if qerr != nil {
 			cc.log.Warnw("Failed fallback", "error", qerr.Error(), "final", "true", "status", "failed")
 			return c.JSON(503, OpenAIError{
@@ -264,13 +265,13 @@ func main() {
 		defer func() {
 			_ = cc.log.Sync()
 		}()
-		request, preprocessError := preprocessOpenaiRequest(cc, db, ENDPOINTS.IMAGE)
+		request, preprocessError := preprocessOpenaiRequest(cc, ENDPOINTS.IMAGE)
 		if preprocessError != nil {
 			return cc.String(preprocessError.StatusCode, preprocessError.Error())
 		}
 		res, err := queryMiners(cc, request)
 
-		go saveRequest(db, res, request, cc.log)
+		go saveRequest(res, request, cc.log)
 
 		if err != nil {
 			cc.log.Warnw("Failed request, sending to fallback server", "error", err.Error())
@@ -300,7 +301,7 @@ func main() {
 		cc := c.(*Context)
 		defer cc.log.Sync()
 
-		rows, err := db.Query(`
+		rows, err := SQL_CLIENT.Query(`
 			SELECT name, DATE_FORMAT(created_at, '%Y-%m-%d %H:%i:%s') as created_at 
 			FROM model WHERE enabled = 1
 		`)

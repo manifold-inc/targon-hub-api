@@ -31,7 +31,6 @@ import (
 
 func preprocessOpenaiRequest(
 	c *Context,
-	db *sql.DB,
 	endpoint string,
 ) (*RequestInfo, *RequestError) {
 	startTime := time.Now()
@@ -57,7 +56,7 @@ func preprocessOpenaiRequest(
 		credits int64
 		userid  int
 	)
-	err := db.QueryRow("SELECT user.credits, user.id FROM user INNER JOIN api_key ON user.id = api_key.user_id WHERE api_key.id = ?", strings.Split(bearer, " ")[1]).
+	err := SQL_CLIENT.QueryRow("SELECT user.credits, user.id FROM user INNER JOIN api_key ON user.id = api_key.user_id WHERE api_key.id = ?", strings.Split(bearer, " ")[1]).
 		Scan(&credits, &userid)
 	if err == sql.ErrNoRows && !DEBUG {
 		c.log.Warnf("no user found for bearer token %s", bearer)
@@ -214,7 +213,7 @@ func sha256Hash(str []byte) string {
 func getMinerForModel(c *Context, model string, specific_uid *int) (*Miner, error) {
 	// Weighted random based on miner incentive
 	rh := rejson.NewReJSONHandler()
-	rh.SetGoRedisClientWithContext(c.Request().Context(), client)
+	rh.SetGoRedisClientWithContext(c.Request().Context(), REDIS_CLIENT)
 	minerJSON, err := rh.JSONGet(model, ".")
 	var choices []randutil.Choice
 
@@ -533,7 +532,7 @@ func queryMiners(c *Context, req *RequestInfo) (*ResponseInfo, error) {
 	return &ri, nil
 }
 
-func saveRequest(db *sql.DB, res *ResponseInfo, req *RequestInfo, logger *zap.SugaredLogger) {
+func saveRequest(res *ResponseInfo, req *RequestInfo, logger *zap.SugaredLogger) {
 	var (
 		model_id int
 		cpt      int
@@ -549,7 +548,7 @@ func saveRequest(db *sql.DB, res *ResponseInfo, req *RequestInfo, logger *zap.Su
 		logger.Error("No model in body")
 		return
 	}
-	err = db.QueryRow("SELECT id, cpt FROM model WHERE name = ?", model.(string)).
+	err = SQL_CLIENT.QueryRow("SELECT id, cpt FROM model WHERE name = ?", model.(string)).
 		Scan(&model_id, &cpt)
 	if err != nil {
 		logger.Warnw("Failed to get model "+model.(string), "error", err.Error())
@@ -560,7 +559,7 @@ func saveRequest(db *sql.DB, res *ResponseInfo, req *RequestInfo, logger *zap.Su
 
 	// Update credits
 	// usedCredits := res.ResponseTokens * cpt
-	//_, err = db.Exec("UPDATE user SET credits=? WHERE id=?",
+	//_, err = SQL_CLIENT.Exec("UPDATE user SET credits=? WHERE id=?",
 	//	max(req.StartingCredits-int64(usedCredits), 0),
 	//	req.UserId)
 	//if err != nil {
@@ -583,7 +582,7 @@ func saveRequest(db *sql.DB, res *ResponseInfo, req *RequestInfo, logger *zap.Su
 		logger.Errorw("Failed to parse json: "+string(responseJson), "error", err.Error())
 	}
 
-	_, err = db.Exec(`
+	_, err = SQL_CLIENT.Exec(`
 	INSERT INTO 
 		request (pub_id, user_id, credits_used, request, response, model_id, uid, hotkey, coldkey, miner_address, endpoint, success, time_to_first_token, total_time, scored)
 		VALUES	(?,      ?,       ?,            ?,       ?,        ?,        ?,   ?,      ?,       ?,             ?,        ?,       ?,                   ?,          ?)`,
@@ -611,7 +610,7 @@ func saveRequest(db *sql.DB, res *ResponseInfo, req *RequestInfo, logger *zap.Su
 	}
 }
 
-func QueryFallback(c *Context, db *sql.DB, req *RequestInfo) *RequestError {
+func QueryFallback(c *Context, req *RequestInfo) *RequestError {
 	var requestBody RequestBody
 	err := json.Unmarshal(req.Body, &requestBody)
 	if err != nil {
@@ -619,7 +618,7 @@ func QueryFallback(c *Context, db *sql.DB, req *RequestInfo) *RequestError {
 		return &RequestError{400, errors.New("invalid body")}
 	}
 	var fallback_server string
-	err = db.QueryRow("SELECT model.fallback_server FROM model WHERE model.name = ?", requestBody.Model).
+	err = SQL_CLIENT.QueryRow("SELECT model.fallback_server FROM model WHERE model.name = ?", requestBody.Model).
 		Scan(&fallback_server)
 	if err == sql.ErrNoRows && !DEBUG {
 		return &RequestError{400, fmt.Errorf("no model found for %s", requestBody.Model)}
