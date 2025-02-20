@@ -18,16 +18,6 @@ from logconfig import setupLogging
 logger = setupLogging()
 
 
-def get_blocked_keys():
-    try:
-        with open("blocked_keys.txt", "r") as file:
-            text = file.read()
-            keys: List[str] = text.split("\n")
-            return [key.strip() for key in keys if len(key)]
-    except Exception:
-        return []
-
-
 async def sync_miners():
     metagraph = subtensor.metagraph(netuid=4)
     non_zero = sum([1 for x in metagraph.incentive if x])
@@ -62,10 +52,10 @@ async def sync_miners():
                 "hotkey": axon.hotkey,
                 "coldkey": axon.coldkey,
                 "uid": uid,
-                "incentive_scaled": int(metagraph.incentive[uid] * 1000),
+                "incentive_scaled": max(int(metagraph.incentive[uid] * 1000), 1),
             }
             miner_models[model].append(m)
-            print(m)
+        print(uid, models)
     for model in miner_models.keys():
         r.json().set(model, obj=miner_models[model], path=Path.root_path())
     await asyncio.sleep(60 * 30)
