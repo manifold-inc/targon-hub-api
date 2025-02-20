@@ -49,7 +49,7 @@ func ProcessOpenaiRequest(cc echo.Context, endpoint string) error {
 		return c.String(200, "")
 	}
 
-	if len(res.Data.Completion.Responses) > 15 {
+	if len(res.Responses) > 15 {
 		c.Log.Warnw(
 			"failed request mid stream, canceling request",
 			"uid", res.Miner.Uid,

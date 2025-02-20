@@ -66,26 +66,11 @@ type ResponseInfo struct {
 	Success   bool
 	TotalTime int64
 
-	Type  string
-	Data  Data
-	Error string
-}
-
-type Data struct {
-	Chat       Chat
-	Completion Completion
-}
-
-type Completion struct {
+	Type             string
 	TimeToFirstToken int64
 	ResponseTokens   int
 	Responses        []map[string]interface{}
-}
-
-type Chat struct {
-	TimeToFirstToken int64
-	ResponseTokens   int
-	Responses        []map[string]interface{}
+	Error            string
 }
 
 type Miner struct {

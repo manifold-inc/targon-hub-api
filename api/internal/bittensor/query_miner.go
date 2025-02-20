@@ -194,8 +194,6 @@ func QueryMiner(c *shared.Context, req *shared.RequestInfo) (*shared.ResponseInf
 		"uid",
 		miner.Uid,
 	)
-	var ri shared.ResponseInfo
-
 	reader := bufio.NewScanner(res.Body)
 	finished := false
 	for reader.Scan() {
@@ -238,61 +236,20 @@ func QueryMiner(c *shared.Context, req *shared.RequestInfo) (*shared.ResponseInf
 		}
 	}
 	res.Body.Close()
-	if !finished {
-		if req.Endpoint == shared.ENDPOINTS.CHAT {
-			return &shared.ResponseInfo{
-				Miner: miner,
-				Data: shared.Data{
-					Chat: shared.Chat{
-						ResponseTokens:   tokens,
-						TimeToFirstToken: timeToFirstToken,
-						Responses:        llmResponse,
-					},
-				},
-				Success: false,
-				Type:    shared.ENDPOINTS.CHAT,
-			}, nil
-		}
-		return &shared.ResponseInfo{
-			Miner: miner,
-			Data: shared.Data{
-				Completion: shared.Completion{
-					ResponseTokens:   tokens,
-					TimeToFirstToken: timeToFirstToken,
-					Responses:        llmResponse,
-				},
-			},
-			Success: false,
-			Type:    shared.ENDPOINTS.COMPLETION,
-		}, nil
-	}
-	ri = shared.ResponseInfo{
-		Miner:   miner,
-		Success: true,
-
-		Type: req.Endpoint,
-	}
-	if req.Endpoint == shared.ENDPOINTS.CHAT {
-		ri.Data = shared.Data{
-			Chat: shared.Chat{
-				Responses:        llmResponse,
-				ResponseTokens:   tokens,
-				TimeToFirstToken: timeToFirstToken,
-			},
-		}
-	}
-	if req.Endpoint == shared.ENDPOINTS.COMPLETION {
-		ri.Data = shared.Data{
-			Completion: shared.Completion{
-				Responses:        llmResponse,
-				ResponseTokens:   tokens,
-				TimeToFirstToken: timeToFirstToken,
-			},
-		}
-	}
-
 	totalTime := int64(time.Since(start) / time.Millisecond)
-	ri.TotalTime = totalTime
+
+	responseInfo := &shared.ResponseInfo{
+		Miner:            miner,
+		Success:          finished,
+		Type:             shared.ENDPOINTS.CHAT,
+		Responses:        llmResponse,
+		ResponseTokens:   tokens,
+		TimeToFirstToken: timeToFirstToken,
+		TotalTime:        totalTime,
+	}
+	if !finished {
+		return responseInfo, nil
+	}
 	c.Log.Infow(
 		"Finished Request",
 		"final", "true",
@@ -300,5 +257,5 @@ func QueryMiner(c *shared.Context, req *shared.RequestInfo) (*shared.ResponseInf
 		"duration", fmt.Sprintf("%d", time.Since(req.StartTime)/time.Millisecond),
 		"tokens", tokens,
 	)
-	return &ri, nil
+	return responseInfo, nil
 }

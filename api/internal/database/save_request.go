@@ -36,10 +36,10 @@ func SaveRequest(sqlClient *sql.DB, res *shared.ResponseInfo, req *shared.Reques
 	// Update credits
 	usedCredits := 0
 	if res.Type == shared.ENDPOINTS.COMPLETION {
-		usedCredits = res.Data.Completion.ResponseTokens * cpt
+		usedCredits = res.ResponseTokens * cpt
 	}
 	if res.Type == shared.ENDPOINTS.CHAT {
-		usedCredits = res.Data.Chat.ResponseTokens * cpt
+		usedCredits = res.ResponseTokens * cpt
 	}
 	if !req.Chargeable {
 		usedCredits = 0
@@ -56,14 +56,8 @@ func SaveRequest(sqlClient *sql.DB, res *shared.ResponseInfo, req *shared.Reques
 
 	var responseJson []byte
 	var timeForFirstToken int64 = 0
-	switch res.Type {
-	case shared.ENDPOINTS.CHAT:
-		timeForFirstToken = res.Data.Chat.TimeToFirstToken
-		responseJson, err = json.Marshal(res.Data.Chat.Responses)
-	case shared.ENDPOINTS.COMPLETION:
-		timeForFirstToken = res.Data.Chat.TimeToFirstToken
-		responseJson, err = json.Marshal(res.Data.Completion.Responses)
-	}
+	timeForFirstToken = res.TimeToFirstToken
+	responseJson, err = json.Marshal(res.Responses)
 
 	if err != nil {
 		logger.Errorw("Failed to parse json: "+string(responseJson), "error", err.Error())
