@@ -57,7 +57,7 @@ func Models(cc echo.Context) error {
 	}
 
 	if err = rows.Err(); err != nil {
-		c.Log.Error("Error iterating model rows", "error", err.Error())
+		c.Log.Errorw("Error iterating model rows", "error", err.Error())
 		return c.String(500, "Failed to get models")
 	}
 

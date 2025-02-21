@@ -16,7 +16,7 @@ func ChatRequest(c echo.Context) error {
 }
 
 func CompletionRequest(c echo.Context) error {
-	return ProcessOpenaiRequest(c, shared.ENDPOINTS.CHAT)
+	return ProcessOpenaiRequest(c, shared.ENDPOINTS.COMPLETION)
 }
 
 func ProcessOpenaiRequest(cc echo.Context, endpoint string) error {
@@ -24,7 +24,7 @@ func ProcessOpenaiRequest(cc echo.Context, endpoint string) error {
 	defer func() {
 		_ = c.Log.Sync()
 	}()
-	request, preprocessError := preprocessOpenaiRequest(c, shared.ENDPOINTS.COMPLETION)
+	request, preprocessError := preprocessOpenaiRequest(c, endpoint)
 	if preprocessError != nil {
 		return c.String(preprocessError.StatusCode, preprocessError.Error())
 	}
@@ -68,6 +68,11 @@ func ProcessOpenaiRequest(cc echo.Context, endpoint string) error {
 		})
 	}
 
+	if c.Cfg.Env.Debug {
+		c.Log.Warnw("skipping fallback due to debug flag", "error", res.Error)
+		return c.String(500, "")
+	}
+
 	c.Log.Warnw(
 		"failed request, sending to fallback",
 		"uid", res.Miner.Uid,
@@ -75,9 +80,6 @@ func ProcessOpenaiRequest(cc echo.Context, endpoint string) error {
 		"coldkey", res.Miner.Coldkey,
 		"error", res.Error,
 	)
-	if c.Cfg.Env.Debug {
-		return c.String(500, "")
-	}
 	qerr := QueryFallback(c, request)
 	if qerr != nil {
 		c.Log.Warnw("Failed fallback", "error", qerr.Error(), "final", "true", "status", "failed")

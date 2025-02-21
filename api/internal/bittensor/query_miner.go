@@ -100,10 +100,6 @@ func QueryMiner(c *shared.Context, req *shared.RequestInfo) (*shared.ResponseInf
 	}
 	httpClient := http.Client{Transport: tr, Timeout: 2 * time.Minute}
 
-	tokens := 0
-	var llmResponse []map[string]interface{}
-	var timeToFirstToken int64
-
 	route, ok := shared.ROUTES[req.Endpoint]
 	if !ok {
 		return nil, errors.New("unknown method")
@@ -196,6 +192,10 @@ func QueryMiner(c *shared.Context, req *shared.RequestInfo) (*shared.ResponseInf
 	)
 	reader := bufio.NewScanner(res.Body)
 	finished := false
+	tokens := 0
+	var llmResponse []map[string]interface{}
+	var timeToFirstToken int64
+
 	for reader.Scan() {
 		select {
 		case <-c.Request().Context().Done():

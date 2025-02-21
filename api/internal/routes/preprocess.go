@@ -40,7 +40,7 @@ func preprocessOpenaiRequest(
 		return nil, &shared.RequestError{StatusCode: 401, Err: errors.New("unauthorized")}
 	}
 	if err != nil {
-		c.Log.Errorf("Error fetching user data from api key", "error", err)
+		c.Log.Errorw("Error fetching user data from api key", "error", err)
 		return nil, &shared.RequestError{StatusCode: 500, Err: errors.New("internal server error")}
 	}
 
@@ -64,13 +64,14 @@ func preprocessOpenaiRequest(
 	var payload map[string]interface{}
 	err = json.Unmarshal(body, &payload)
 	if err != nil {
-		c.Log.Error(err.Error())
+		c.Log.Warnw("failed json unmarshall", "error", err.Error())
 		return nil, &shared.RequestError{StatusCode: 500, Err: errors.New("internal server error")}
 	}
 
 	// Get Model
 	model, ok := payload["model"]
 	if !ok {
+		c.Log.Warn("No model in request body")
 		return nil, &shared.RequestError{StatusCode: 500, Err: errors.New("model field required")}
 	}
 	c.Log = c.Log.With("model", model.(string))
