@@ -81,6 +81,10 @@ func preprocessOpenaiRequest(
 		return nil, &shared.RequestError{StatusCode: 400, Err: errors.New("not enough credits")}
 	}
 
+	if val, ok := payload["stream"]; !ok || val == nil {
+		payload["stream"] = true
+	}
+
 	if val, ok := payload["seed"]; !ok || val == nil {
 		payload["seed"] = rand.Intn(100000)
 	}
