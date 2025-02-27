@@ -14,8 +14,102 @@ import time
 from substrateinterface import Keypair
 import httpx
 from logconfig import setupLogging
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.asymmetric import padding
+import base64
 
 logger = setupLogging()
+
+
+def load_public_key():
+    try:
+        with open("./public_key.pem", "rb") as key_file:
+            public_key = serialization.load_pem_public_key(key_file.read())
+        return public_key
+    except Exception as e:
+        raise Exception(f"Error loading public key: {e}")
+
+
+PUBKEY = load_public_key()
+
+
+def verify_signature(msg: dict, signature: str, public_key):
+    try:
+        msg_bytes = json.dumps(msg, separators=(",", ":")).encode("utf-8")
+
+        signature_bytes = base64.b64decode(signature)
+
+        public_key.verify(
+            signature_bytes,
+            msg_bytes,
+            padding.PKCS1v15(),
+            hashes.SHA256(),
+        )
+
+        return True
+    except Exception:
+        return False
+
+
+def get_models(hotkey, axon):
+    headers = generate_header(hotkey, b"", axon.hotkey)
+    try:
+        res = httpx.get(
+            f"http://{axon.ip}:{axon.port}/models",
+            headers=headers,
+            timeout=3,
+        )
+        if res.status_code != 200:
+            return []
+        models = res.json()
+        if not isinstance(models, list):
+            return []
+        return models
+    except Exception:
+        return []
+
+
+def get_gpus(hotkey, axon):
+    headers = generate_header(hotkey, b"", axon.hotkey)
+    try:
+        res = httpx.get(
+            f"http://{axon.ip}:{axon.port}/nodes",
+            headers=headers,
+            timeout=10,
+        )
+        if res.status_code != 200:
+            return []
+        nodes = res.json()
+        if not isinstance(nodes, list):
+            return []
+        gpus = 0
+        for node in nodes:
+            if not isinstance(node, dict):
+                return 0
+            msg = node.get("msg")
+            signature = node.get("signature")
+            if not isinstance(msg, dict):
+                return 0
+            if not isinstance(signature, str):
+                return 0
+            if not verify_signature(msg, signature, PUBKEY):
+                return 0
+            gpu_info = msg.get("gpu_info", [])
+            if len(gpu_info) == 0:
+                continue
+            is_h100 = "h100" in gpu_info[0].get("gpu_type", "").lower()
+            is_h200 = "h200" in gpu_info[0].get("gpu_type", "").lower()
+            if not is_h100 and not is_h200:
+                continue
+            num_gpus = msg.get("no_of_gpus", 0)
+            if is_h100:
+                gpus += num_gpus
+                continue
+            gpus += num_gpus * 2
+
+        return gpus
+    except Exception:
+        return 0
 
 
 async def sync_miners():
@@ -32,17 +126,8 @@ async def sync_miners():
     ]
     miner_models = {}
     for axon, uid in axons:
-        headers = generate_header(hotkey, b"", axon.hotkey)
-        try:
-            res = httpx.get(
-                f"http://{axon.ip}:{axon.port}/models",
-                headers=headers,
-                timeout=3,
-            )
-            if res.status_code != 200 or not isinstance(models := res.json(), list):
-                continue
-        except Exception:
-            continue
+        models = get_models(hotkey, axon)
+        gpus = get_gpus(hotkey, axon)
         for model in models:
             if miner_models.get(model) is None:
                 miner_models[model] = []
@@ -52,7 +137,7 @@ async def sync_miners():
                 "hotkey": axon.hotkey,
                 "coldkey": axon.coldkey,
                 "uid": uid,
-                "incentive_scaled": max(int(metagraph.incentive[uid] * 1000), 1),
+                "weight": gpus,
             }
             miner_models[model].append(m)
         print(uid, models)

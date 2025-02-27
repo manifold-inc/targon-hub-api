@@ -54,7 +54,7 @@ func getMinerForModel(c *shared.Context, model string, specific_uid *int) (*shar
 		if specific_uid != nil && miners[i].Uid == *specific_uid {
 			return &miners[i], nil
 		}
-		ch := randutil.Choice{Item: miners[i], Weight: int(miners[i].IncentiveScaled)}
+		ch := randutil.Choice{Item: miners[i], Weight: miners[i].Weight}
 		choices = append(choices, ch)
 	}
 	choice, err := randutil.WeightedChoice(choices)
