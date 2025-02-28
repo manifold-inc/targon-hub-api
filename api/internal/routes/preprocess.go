@@ -61,7 +61,7 @@ func preprocessOpenaiRequest(
 	}
 
 	// Unmarshal to generic map to set defaults
-	var payload map[string]interface{}
+	var payload map[string]any
 	err = json.Unmarshal(body, &payload)
 	if err != nil {
 		c.Log.Warnw("failed json unmarshall", "error", err.Error())

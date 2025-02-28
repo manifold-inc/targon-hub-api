@@ -1,6 +1,7 @@
 package main
 
 import (
+	"api/internal/bittensor"
 	"api/internal/config"
 	"api/internal/routes"
 	"api/internal/shared"
@@ -25,6 +26,7 @@ func main() {
 		}
 		panic("Failed to init config")
 	}
+	bittensor.InitMiners()
 	defer cfg.Shutdown()
 
 	e := echo.New()

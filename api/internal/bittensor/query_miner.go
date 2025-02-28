@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"api/internal/shared"
@@ -23,12 +24,40 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-func getMinerForModel(c *shared.Context, model string, specific_uid *int) (*shared.Miner, error) {
-	// Weighted random based on miner incentive
+type MinersForModel struct {
+	mu          sync.Mutex
+	miners      *[]shared.Miner
+	lastUpdated time.Time
+}
+
+type MinerMap struct {
+	mu   sync.Mutex
+	mmap map[string]*MinersForModel
+}
+
+type MinerSuccessRates struct {
+	mu        sync.Mutex
+	success   int
+	attempted int
+	lastReset time.Time
+}
+
+var minerSuccessRatesMap map[int]*MinerSuccessRates
+
+func InitMiners() {
+	for i := 0; i <= 256; i++ {
+		minerSuccessRatesMap[i] = &MinerSuccessRates{
+			lastReset: time.Now(),
+		}
+	}
+}
+
+var minerModelsMap MinerMap
+
+func getMinersFromRedis(c *shared.Context, model string) (*[]shared.Miner, error) {
 	rh := rejson.NewReJSONHandler()
 	rh.SetGoRedisClientWithContext(c.Request().Context(), c.Cfg.RedisClient)
 	minerJSON, err := rh.JSONGet(model, ".")
-	var choices []randutil.Choice
 
 	// Model not available
 	if err == redis.Nil {
@@ -50,6 +79,36 @@ func getMinerForModel(c *shared.Context, model string, specific_uid *int) (*shar
 		c.Log.Errorw("Failed to JSON Unmarshal", "error", err.Error())
 		return nil, errors.New("failed to unmarshall json")
 	}
+	return &miners, nil
+}
+
+func getMinerForModel(c *shared.Context, model string, specific_uid *int) (*shared.Miner, error) {
+	// Weighted random based on miner incentive
+	minerModelsMap.mu.Lock()
+	if _, ok := minerModelsMap.mmap[model]; !ok {
+		c.Log.Infow("populating miner object from redis")
+		miners, err := getMinersFromRedis(c, model)
+		if err != nil {
+			return nil, err
+		}
+		minerModelsMap.mmap[model].miners = miners
+		minerModelsMap.mmap[model].lastUpdated = time.Now()
+	}
+	minerModelsMap.mu.Unlock()
+	minerModelsMap.mmap[model].mu.Lock()
+	if time.Since(minerModelsMap.mmap[model].lastUpdated) > time.Minute*10 {
+		c.Log.Infow("updating miner object from redis")
+		miners, err := getMinersFromRedis(c, model)
+		if err != nil {
+			return nil, err
+		}
+		minerModelsMap.mmap[model].miners = miners
+		minerModelsMap.mmap[model].lastUpdated = time.Now()
+	}
+	miners := *minerModelsMap.mmap[model].miners
+	minerModelsMap.mmap[model].mu.Unlock()
+
+	var choices []randutil.Choice
 	for i := range miners {
 		if specific_uid != nil && miners[i].Uid == *specific_uid {
 			return &miners[i], nil
@@ -63,6 +122,19 @@ func getMinerForModel(c *shared.Context, model string, specific_uid *int) (*shar
 		return &miners[0], nil
 	}
 	miner := choice.Item.(shared.Miner)
+
+	go func() {
+		m := minerSuccessRatesMap[miner.Uid]
+		m.mu.Lock()
+		if time.Since(m.lastReset) > 60*time.Minute {
+			m.success = 0
+			m.attempted = 0
+			m.lastReset = time.Now()
+		}
+		m.attempted++
+		m.mu.Unlock()
+	}()
+
 	return &miner, nil
 }
 
@@ -193,7 +265,7 @@ func QueryMiner(c *shared.Context, req *shared.RequestInfo) (*shared.ResponseInf
 	reader := bufio.NewScanner(res.Body)
 	finished := false
 	tokens := 0
-	var llmResponse []map[string]interface{}
+	var llmResponse []map[string]any
 	var timeToFirstToken int64
 
 	for reader.Scan() {
@@ -222,7 +294,7 @@ func QueryMiner(c *shared.Context, req *shared.RequestInfo) (*shared.ResponseInf
 					)
 				}
 				tokens += 1
-				var response map[string]interface{}
+				var response map[string]any
 				err := json.Unmarshal([]byte(token), &response)
 				if err != nil {
 					c.Log.Warnw(
@@ -257,5 +329,11 @@ func QueryMiner(c *shared.Context, req *shared.RequestInfo) (*shared.ResponseInf
 		"duration", fmt.Sprintf("%d", time.Since(req.StartTime)/time.Millisecond),
 		"tokens", tokens,
 	)
+	go func() {
+		m := minerSuccessRatesMap[miner.Uid]
+		m.mu.Lock()
+		m.success++
+		m.mu.Unlock()
+	}()
 	return responseInfo, nil
 }
