@@ -73,31 +73,34 @@ def get_models(hotkey, axon):
 def get_gpus(hotkey, axon):
     nonce = str(uuid.uuid4())
     req_body = {"nonce": nonce}
-    headers = generate_header(hotkey, req_body, axon.hotkey)
+    req_bytes = json.dumps(
+        req_body, ensure_ascii=False, separators=(",", ":"), allow_nan=False
+    ).encode("utf-8")
+    headers = generate_header(hotkey, req_bytes, axon.hotkey)
     try:
         res = httpx.post(
             f"http://{axon.ip}:{axon.port}/nodes",
             headers=headers,
             json=req_body,
-            timeout=10,
+            timeout=30,
         )
         if res.status_code != 200:
-            return []
+            return 0
         nodes = res.json()
         if not isinstance(nodes, list):
-            return []
+            return 0
         gpus = 0
         for node in nodes:
             if not isinstance(node, dict):
-                return 0
+                continue
             msg = node.get("msg")
             signature = node.get("signature")
             if not isinstance(msg, dict):
-                return 0
+                continue
             if not isinstance(signature, str):
-                return 0
+                continue
             if not verify_signature(msg, signature, PUBKEY):
-                return 0
+                continue
             miner_nonce = msg.get("nonce")
             if miner_nonce != nonce:
                 continue
@@ -115,7 +118,8 @@ def get_gpus(hotkey, axon):
             gpus += num_gpus * 2
 
         return gpus
-    except Exception:
+    except Exception as e:
+        print(e)
         return 0
 
 
@@ -147,7 +151,7 @@ async def sync_miners():
                 "weight": gpus,
             }
             miner_models[model].append(m)
-        print(uid, models)
+        print(uid, models, gpus)
     for model in miner_models.keys():
         r.json().set(model, obj=miner_models[model], path=Path.root_path())
     await asyncio.sleep(60 * 30)
@@ -195,7 +199,7 @@ if __name__ == "__main__":
         public_key=os.getenv("PUBLIC_KEY", ""),
         private_key=os.getenv("PRIVATE_KEY", ""),
     )
-    subtensor = bt.subtensor("wss://entrypoint-finney.opentensor.ai:443")
+    subtensor = bt.subtensor("ws://subtensor.sybil.com:9944")
     redis_host = os.getenv("REDIS_HOST", "cache")
     redis_port = int(os.getenv("REDIS_PORT", 6379))
     r = Redis(host=redis_host, port=redis_port, decode_responses=True)
