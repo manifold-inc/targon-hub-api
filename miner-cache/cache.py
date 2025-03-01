@@ -1,4 +1,5 @@
 import asyncio
+import uuid
 from typing import List, Tuple
 import os
 import bittensor as bt
@@ -70,11 +71,14 @@ def get_models(hotkey, axon):
 
 
 def get_gpus(hotkey, axon):
-    headers = generate_header(hotkey, b"", axon.hotkey)
+    nonce = str(uuid.uuid4())
+    req_body = {"nonce": nonce}
+    headers = generate_header(hotkey, req_body, axon.hotkey)
     try:
-        res = httpx.get(
+        res = httpx.post(
             f"http://{axon.ip}:{axon.port}/nodes",
             headers=headers,
+            json=req_body,
             timeout=10,
         )
         if res.status_code != 200:
@@ -94,6 +98,9 @@ def get_gpus(hotkey, axon):
                 return 0
             if not verify_signature(msg, signature, PUBKEY):
                 return 0
+            miner_nonce = msg.get("nonce")
+            if miner_nonce != nonce:
+                continue
             gpu_info = msg.get("gpu_info", [])
             if len(gpu_info) == 0:
                 continue
