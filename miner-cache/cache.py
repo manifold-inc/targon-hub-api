@@ -125,7 +125,7 @@ def get_gpus(hotkey, axon):
 
 async def sync_miners():
     metagraph = subtensor.metagraph(netuid=4)
-    non_zero = sum([1 for x in metagraph.incentive if x])
+    non_zero = sum([1 for _ in metagraph.incentive])
     indices = numpy.argsort(metagraph.incentive)[-non_zero:]
 
     # Get the corresponding uids
