@@ -119,7 +119,7 @@ func getMinerForModel(c *shared.Context, model string, specific_uid *int) (*shar
 	}
 	choice, err := randutil.WeightedChoice(choices)
 	if err != nil {
-		c.Log.Errorw("Failed getting weighted random choice", "error", err.Error())
+		c.Log.Warnw("Failed getting weighted random choice", "error", err.Error())
 		return &miners[0], nil
 	}
 	miner := choice.Item.(shared.Miner)
