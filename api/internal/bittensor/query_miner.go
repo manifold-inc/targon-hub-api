@@ -42,7 +42,7 @@ type MinerSuccessRates struct {
 	lastReset time.Time
 }
 
-var minerSuccessRatesMap map[int]*MinerSuccessRates
+var minerSuccessRatesMap = make(map[int]*MinerSuccessRates)
 
 func InitMiners() {
 	for i := 0; i <= 256; i++ {
@@ -52,7 +52,7 @@ func InitMiners() {
 	}
 }
 
-var minerModelsMap MinerMap
+var minerModelsMap = MinerMap{mmap: make(map[string]*MinersForModel)}
 
 func getMinersFromRedis(c *shared.Context, model string) (*[]shared.Miner, error) {
 	rh := rejson.NewReJSONHandler()
@@ -86,6 +86,7 @@ func getMinerForModel(c *shared.Context, model string, specific_uid *int) (*shar
 	// Weighted random based on miner incentive
 	minerModelsMap.mu.Lock()
 	if _, ok := minerModelsMap.mmap[model]; !ok {
+		minerModelsMap.mmap[model] = &MinersForModel{}
 		c.Log.Infow("populating miner object from redis")
 		miners, err := getMinersFromRedis(c, model)
 		if err != nil {
