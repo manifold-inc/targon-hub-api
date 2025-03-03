@@ -199,7 +199,7 @@ if __name__ == "__main__":
         public_key=os.getenv("PUBLIC_KEY", ""),
         private_key=os.getenv("PRIVATE_KEY", ""),
     )
-    subtensor = bt.subtensor("ws://subtensor.sybil.com:9944")
+    subtensor = bt.subtensor(os.getenv("SUBTENSOR_WS_ADDR", "ws://subtensor.sybil.com:9944"))
     redis_host = os.getenv("REDIS_HOST", "cache")
     redis_port = int(os.getenv("REDIS_PORT", 6379))
     r = Redis(host=redis_host, port=redis_port, decode_responses=True)
