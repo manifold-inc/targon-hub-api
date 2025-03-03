@@ -203,17 +203,17 @@ func QueryMiner(c *shared.Context, req *shared.RequestInfo) (*shared.ResponseInf
 		"Epistula-Signed-For":        miner.Hotkey,
 		"Epistula-Request-Signature": requestSignature,
 		"Epistula-Secret-Signature-0": signMessage(
-			[]byte(fmt.Sprintf("%d.%s", timestampInterval-1, miner.Hotkey)),
+			fmt.Appendf([]byte{}, "%d.%s", timestampInterval-1, miner.Hotkey),
 			c.Cfg.Env.PublicKey,
 			c.Cfg.Env.PrivateKey,
 		),
 		"Epistula-Secret-Signature-1": signMessage(
-			[]byte(fmt.Sprintf("%d.%s", timestampInterval, miner.Hotkey)),
+			fmt.Appendf([]byte{}, "%d.%s", timestampInterval, miner.Hotkey),
 			c.Cfg.Env.PublicKey,
 			c.Cfg.Env.PrivateKey,
 		),
 		"Epistula-Secret-Signature-2": signMessage(
-			[]byte(fmt.Sprintf("%d.%s", timestampInterval+1, miner.Hotkey)),
+			fmt.Appendf([]byte{}, "%d.%s", timestampInterval+1, miner.Hotkey),
 			c.Cfg.Env.PublicKey,
 			c.Cfg.Env.PrivateKey,
 		),
