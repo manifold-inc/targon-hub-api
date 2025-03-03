@@ -90,6 +90,7 @@ func getMinerForModel(c *shared.Context, model string, specific_uid *int) (*shar
 		c.Log.Infow("populating miner object from redis")
 		miners, err := getMinersFromRedis(c, model)
 		if err != nil {
+			minerModelsMap.mu.Unlock()
 			return nil, err
 		}
 		minerModelsMap.mmap[model].miners = miners
@@ -101,6 +102,7 @@ func getMinerForModel(c *shared.Context, model string, specific_uid *int) (*shar
 		c.Log.Infow("updating miner object from redis")
 		miners, err := getMinersFromRedis(c, model)
 		if err != nil {
+			minerModelsMap.mmap[model].mu.Unlock()
 			return nil, err
 		}
 		minerModelsMap.mmap[model].miners = miners
