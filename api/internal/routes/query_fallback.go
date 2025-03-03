@@ -38,11 +38,8 @@ func QueryFallback(c *shared.Context, req *shared.RequestInfo) *shared.RequestEr
 	headers := map[string]string{
 		"X-Targon-Model": req.Model,
 		"Authorization":  fmt.Sprintf("Bearer %s", c.Cfg.Env.FallbackApiKey),
-	}
-
-	// Add Connection header for LLM requests
-	if req.Endpoint == shared.ENDPOINTS.COMPLETION || req.Endpoint == shared.ENDPOINTS.CHAT {
-		headers["Connection"] = "keep-alive"
+		"Content-Type":   "application/json",
+		"Connection":     "keep-alive",
 	}
 
 	// Set headers
