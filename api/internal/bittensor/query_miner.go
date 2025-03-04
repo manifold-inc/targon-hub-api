@@ -323,8 +323,7 @@ func QueryMiner(c *shared.Context, req *shared.RequestInfo) (*shared.ResponseInf
 		TotalTime:        totalTime,
 	}
 	if !finished {
-		bs, _ := json.Marshal(llmResponse)
-		responseInfo.Error = string(bs)
+		responseInfo.Error = "Premature end of generation"
 		return responseInfo, nil
 	}
 	c.Log.Infow(
@@ -333,6 +332,7 @@ func QueryMiner(c *shared.Context, req *shared.RequestInfo) (*shared.ResponseInf
 		"status", "success",
 		"duration", fmt.Sprintf("%d", time.Since(req.StartTime)/time.Millisecond),
 		"tokens", tokens,
+		"uid", miner.Uid,
 	)
 	go func() {
 		m := minerSuccessRatesMap[miner.Uid]
