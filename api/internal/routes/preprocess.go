@@ -100,7 +100,7 @@ func preprocessOpenaiRequest(
 	if logprobs, ok := payload["logprobs"]; !ok || !logprobs.(bool) {
 		payload["logprobs"] = true
 	}
-	payload["stream_options"] = map[string]interface{}{
+	payload["stream_options"] = map[string]any{
 		"include_usage": true,
 	}
 

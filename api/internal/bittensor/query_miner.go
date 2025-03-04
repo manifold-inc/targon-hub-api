@@ -253,7 +253,7 @@ func QueryMiner(c *shared.Context, req *shared.RequestInfo) (*shared.ResponseInf
 	if res.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(res.Body)
 		res.Body.Close()
-		return &shared.ResponseInfo{Miner: miner, Success: false, Error: string(body)}, nil
+		return &shared.ResponseInfo{Miner: miner, Success: false, Error: "Failed reading body: " + string(body)}, nil
 	}
 
 	c.Log.Infow(
@@ -323,6 +323,8 @@ func QueryMiner(c *shared.Context, req *shared.RequestInfo) (*shared.ResponseInf
 		TotalTime:        totalTime,
 	}
 	if !finished {
+		bs, _ := json.Marshal(llmResponse)
+		responseInfo.Error = string(bs)
 		return responseInfo, nil
 	}
 	c.Log.Infow(
