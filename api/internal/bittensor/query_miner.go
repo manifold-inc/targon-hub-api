@@ -173,7 +173,7 @@ func QueryMiner(c *shared.Context, req *shared.RequestInfo) (*shared.ResponseInf
 		TLSHandshakeTimeout: 2 * time.Second,
 		DisableKeepAlives:   false,
 	}
-	httpClient := http.Client{Transport: tr, Timeout: 2 * time.Minute}
+	httpClient := http.Client{Transport: tr, Timeout: 10 * time.Minute}
 
 	route, ok := shared.ROUTES[req.Endpoint]
 	if !ok {
