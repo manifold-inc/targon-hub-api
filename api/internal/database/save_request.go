@@ -4,18 +4,32 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"sync"
 
 	"api/internal/shared"
 
 	"go.uber.org/zap"
 )
 
+type UserMutex struct {
+	mu   sync.Mutex
+	umap map[int]*sync.Mutex
+}
+
+var userMutexes = UserMutex{umap: make(map[int]*sync.Mutex)}
+
 func SaveRequest(sqlClient *sql.DB, res *shared.ResponseInfo, req *shared.RequestInfo, logger *zap.SugaredLogger) {
+	userMutexes.mu.Lock()
+	if _, ok := userMutexes.umap[req.UserId]; !ok {
+		userMutexes.umap[req.UserId] = &sync.Mutex{}
+	}
+	userMutexes.mu.Unlock()
+
 	var (
 		model_id int
 		cpt      int
 	)
-	var bodyJson map[string]interface{}
+	var bodyJson map[string]any
 	err := json.Unmarshal(req.Body, &bodyJson)
 	if err != nil {
 		logger.Warnf("Failed unmasrhaling request body: %s", string(req.Body))
@@ -35,30 +49,40 @@ func SaveRequest(sqlClient *sql.DB, res *shared.ResponseInfo, req *shared.Reques
 
 	// Update credits
 	usedCredits := 0
-	if res.Type == shared.ENDPOINTS.COMPLETION {
-		usedCredits = res.ResponseTokens * cpt
-	}
-	if res.Type == shared.ENDPOINTS.CHAT {
-		usedCredits = res.ResponseTokens * cpt
-	}
+	input_tokens_approx := len(string(req.Body)) / 10
+	usedCredits = (res.ResponseTokens + input_tokens_approx) * cpt
+
 	if !req.Chargeable {
 		usedCredits = 0
 	}
 
+	userMutexes.umap[req.UserId].Lock()
+	var startingCredits int64
+	err = sqlClient.QueryRow("SELECT user.credits FROM user  WHERE user.id = ?", req.UserId).
+		Scan(&startingCredits)
+	if err == sql.ErrNoRows {
+		logger.Warnf("no user found for user id %d", req.UserId)
+		startingCredits = req.StartingCredits
+	}
+	if err != nil {
+		logger.Errorw("Error fetching user data from api key", "error", err)
+		startingCredits = req.StartingCredits
+	}
+
 	if usedCredits != 0 {
 		_, err = sqlClient.Exec("UPDATE user SET credits=? WHERE id=?",
-			max(req.StartingCredits-int64(usedCredits), 0),
+			max(startingCredits-(int64(usedCredits)), 0),
 			req.UserId)
 		if err != nil {
 			logger.Errorf("Failed to update credits: %d - %d\n%s\n", req.StartingCredits, usedCredits, err)
 		}
 	}
+	userMutexes.umap[req.UserId].Unlock()
 
 	var responseJson []byte
 	var timeForFirstToken int64 = 0
 	timeForFirstToken = res.TimeToFirstToken
 	responseJson, err = json.Marshal(res.Responses)
-
 	if err != nil {
 		logger.Errorw("Failed to parse json: "+string(responseJson), "error", err.Error())
 	}

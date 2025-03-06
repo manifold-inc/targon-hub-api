@@ -219,8 +219,9 @@ func QueryMiner(c *shared.Context, req *shared.RequestInfo) (*shared.ResponseInf
 			c.Cfg.Env.PublicKey,
 			c.Cfg.Env.PrivateKey,
 		),
-		"X-Targon-Model": req.Model,
-		"Content-Type":   "application/json",
+		"X-Targon-Model":      req.Model,
+		"Content-Type":        "application/json",
+		"X-Targon-Request-Id": c.Reqid,
 	}
 	headers["Connection"] = "keep-alive"
 
