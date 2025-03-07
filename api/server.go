@@ -58,7 +58,7 @@ func main() {
 	e.POST("/v1/completions", routes.CompletionRequest)
 	e.GET("/v1/models", routes.Models)
 
-	ticker := time.NewTicker(10 * time.Second)
+	ticker := time.NewTicker(10 * time.Minute)
 	defer ticker.Stop()
 
 	go func() {
