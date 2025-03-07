@@ -303,7 +303,7 @@ func QueryMiner(c *shared.Context, req *shared.RequestInfo) (*shared.ResponseInf
 
 	// Cancel with timer
 	r = r.WithContext(ctx)
-	timer = time.AfterFunc(4*time.Second, func() {
+	timer = time.AfterFunc(8*time.Second, func() {
 		cancel()
 	})
 
