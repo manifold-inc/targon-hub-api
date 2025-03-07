@@ -302,8 +302,10 @@ func QueryMiner(c *shared.Context, req *shared.RequestInfo) (*shared.ResponseInf
 	var timer *time.Timer
 
 	// Cancel with timer
+	responseError := "never receieved DONE token"
 	r = r.WithContext(ctx)
 	timer = time.AfterFunc(8*time.Second, func() {
+		responseError = "first token took too long"
 		cancel()
 	})
 
@@ -346,6 +348,7 @@ func QueryMiner(c *shared.Context, req *shared.RequestInfo) (*shared.ResponseInf
 			fmt.Fprint(c.Response(), token+"\n\n")
 			c.Response().Flush()
 			if token == "data: [DONE]" {
+				responseError = ""
 				finished = true
 				break
 			}
@@ -386,6 +389,7 @@ func QueryMiner(c *shared.Context, req *shared.RequestInfo) (*shared.ResponseInf
 		ResponseTokens:   tokens,
 		TimeToFirstToken: timeToFirstToken,
 		TotalTime:        totalTime,
+		Error:            responseError,
 	}
 	if !finished {
 		go func() {
