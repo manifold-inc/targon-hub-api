@@ -1,6 +1,8 @@
 package main
 
 import (
+	"time"
+
 	"api/internal/bittensor"
 	"api/internal/config"
 	"api/internal/routes"
@@ -55,6 +57,15 @@ func main() {
 	e.POST("/v1/chat/completions", routes.ChatRequest)
 	e.POST("/v1/completions", routes.CompletionRequest)
 	e.GET("/v1/models", routes.Models)
+
+	ticker := time.NewTicker(10 * time.Second)
+	defer ticker.Stop()
+
+	go func() {
+		for range ticker.C {
+			go bittensor.ReportStats(cfg.Env.PublicKey, cfg.Env.PrivateKey, cfg.Env.Hotkey, sugar)
+		}
+	}()
 
 	e.Logger.Fatal(e.Start(":80"))
 }

@@ -22,6 +22,7 @@ import (
 	"github.com/jmcvetta/randutil"
 	"github.com/nitishm/go-rejson/v4"
 	"github.com/redis/go-redis/v9"
+	"go.uber.org/zap"
 )
 
 type MinersForModel struct {
@@ -37,9 +38,10 @@ type MinerMap struct {
 
 type MinerSuccessRates struct {
 	mu        sync.Mutex
-	success   int
-	attempted int
-	lastReset time.Time
+	Completed int       `json:"completed"`
+	Attempted int       `json:"attempted"`
+	Partial   int       `json:"partial"`
+	LastReset time.Time `json:"lastReset"`
 }
 
 var minerSuccessRatesMap = make(map[int]*MinerSuccessRates)
@@ -47,12 +49,79 @@ var minerSuccessRatesMap = make(map[int]*MinerSuccessRates)
 func InitMiners() {
 	for i := 0; i <= 256; i++ {
 		minerSuccessRatesMap[i] = &MinerSuccessRates{
-			lastReset: time.Now(),
+			LastReset: time.Now(),
 		}
 	}
 }
 
 var minerModelsMap = MinerMap{mmap: make(map[string]*MinersForModel)}
+
+type JugoPayload struct {
+	Uid  int            `json:"uid"`
+	Data JugoApiPayload `json:"data"`
+}
+type JugoApiPayload struct {
+	Api any `json:"api"`
+}
+
+func ReportStats(public string, private string, hotkey string, logger *zap.SugaredLogger) {
+	logger.Info("Broadcasting stats to jugo")
+	defer logger.Info("Finished jugo broadcast")
+	var data []JugoPayload
+	for k, v := range minerSuccessRatesMap {
+		data = append(data, JugoPayload{Data: JugoApiPayload{Api: v}, Uid: k})
+	}
+
+	endpoint := "https://jugo.targon.com/mongo"
+	body, _ := json.Marshal(data)
+
+	for _, v := range minerSuccessRatesMap {
+		v.mu.Lock()
+		v.Completed = 0
+		v.Attempted = 0
+		v.Partial = 0
+		v.LastReset = time.Now()
+		v.mu.Unlock()
+	}
+
+	r, _ := http.NewRequest("POST", endpoint, bytes.NewBuffer(body))
+
+	// start creation of signature
+	timestamp := time.Now().UnixMilli()
+	id := uuid.New().String()
+
+	// Build the rest of the body hash
+	bodyHash := sha256Hash(body)
+	message := fmt.Sprintf("%s.%s.%d.%s", bodyHash, id, timestamp, "")
+	requestSignature := signMessage([]byte(message), public, private)
+
+	headers := map[string]string{
+		"Epistula-Version":           "2",
+		"Epistula-Timestamp":         fmt.Sprintf("%d", timestamp),
+		"Epistula-Uuid":              id,
+		"Epistula-Signed-By":         hotkey,
+		"Epistula-Request-Signature": requestSignature,
+		"Content-Type":               "application/json",
+		"X-Targon-Service":           "targon-hub-api",
+	}
+	headers["Connection"] = "keep-alive"
+
+	// Set headers
+	for key, value := range headers {
+		r.Header.Set(key, value)
+	}
+	r.Close = true
+	httpClient := http.Client{Timeout: 30 * time.Second}
+	res, err := httpClient.Do(r)
+	if err != nil {
+		logger.Errorw("Failed sending data to jugo", "error", err)
+		return
+	}
+	if res.StatusCode == 200 {
+		return
+	}
+	logger.Errorw("Failed sending data to jugo", "error", res.StatusCode)
+}
 
 func getMinersFromRedis(c *shared.Context, model string) (*[]shared.Miner, error) {
 	rh := rejson.NewReJSONHandler()
@@ -129,12 +198,7 @@ func getMinerForModel(c *shared.Context, model string, specific_uid *int) (*shar
 	go func() {
 		m := minerSuccessRatesMap[miner.Uid]
 		m.mu.Lock()
-		if time.Since(m.lastReset) > 60*time.Minute {
-			m.success = 0
-			m.attempted = 0
-			m.lastReset = time.Now()
-		}
-		m.attempted++
+		m.Attempted++
 		m.mu.Unlock()
 	}()
 
@@ -324,6 +388,12 @@ func QueryMiner(c *shared.Context, req *shared.RequestInfo) (*shared.ResponseInf
 		TotalTime:        totalTime,
 	}
 	if !finished {
+		go func() {
+			m := minerSuccessRatesMap[miner.Uid]
+			m.mu.Lock()
+			m.Partial++
+			m.mu.Unlock()
+		}()
 		responseInfo.Error = "Premature end of generation"
 		return responseInfo, nil
 	}
@@ -338,7 +408,7 @@ func QueryMiner(c *shared.Context, req *shared.RequestInfo) (*shared.ResponseInf
 	go func() {
 		m := minerSuccessRatesMap[miner.Uid]
 		m.mu.Lock()
-		m.success++
+		m.Completed++
 		m.mu.Unlock()
 	}()
 	return responseInfo, nil
