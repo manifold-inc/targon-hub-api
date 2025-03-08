@@ -68,11 +68,13 @@ func main() {
 			reset := false
 			// reset every 5 minutes
 			// sliding window is 10 slots; total clear every 50 min
-			if count == 6*10 {
+			if count == 6*5 {
 				reset = true
 				count = 0
 			}
-			go bittensor.ReportStats(cfg.Env.PublicKey, cfg.Env.PrivateKey, cfg.Env.Hotkey, sugar, reset)
+			sugar.Infof("Broadcasting stats to jugo. Tick %d", count)
+			bittensor.ReportStats(cfg.Env.PublicKey, cfg.Env.PrivateKey, cfg.Env.Hotkey, sugar, reset)
+			sugar.Infof("Finished jugo broadcast. Tick %d", count)
 		}
 	}()
 

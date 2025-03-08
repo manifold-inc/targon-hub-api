@@ -69,8 +69,6 @@ type JugoApiPayload struct {
 }
 
 func ReportStats(public string, private string, hotkey string, logger *zap.SugaredLogger, reset bool) {
-	logger.Info("Broadcasting stats to jugo")
-	defer logger.Info("Finished jugo broadcast")
 	var data []JugoPayload
 	for k, v := range minerSuccessRatesMap {
 		data = append(data, JugoPayload{Data: JugoApiPayload{Api: v}, Uid: k})
