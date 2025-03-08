@@ -79,7 +79,7 @@ func ReportStats(public string, private string, hotkey string, logger *zap.Sugar
 			rate := float32(1)
 			if v.Attempted != 0 {
 				rate = float32(v.Completed) / float32(v.Attempted)
-				rate = max(rate, 1)
+				rate = min(rate, 1)
 			}
 			v.SuccessRateOverTime = append(v.SuccessRateOverTime, rate)
 			if len(v.SuccessRateOverTime) > 10 {
