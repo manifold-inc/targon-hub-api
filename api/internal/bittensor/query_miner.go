@@ -39,6 +39,7 @@ type MinerMap struct {
 type MinerSuccessRates struct {
 	mu                  sync.Mutex
 	Completed           int       `json:"completed"`
+	CompletedOverTime   []int     `json:"completedOverTime"`
 	Attempted           int       `json:"attempted"`
 	Partial             int       `json:"partial"`
 	SuccessRateOverTime []float32 `json:"successRateOverTime"`
@@ -46,12 +47,21 @@ type MinerSuccessRates struct {
 	LastReset           time.Time `json:"lastReset"`
 }
 
+type GlobalStats struct {
+	mu                sync.Mutex
+	AttemptedOverTime []int
+	AttemptedCurrent  int
+}
+
+var globalStats = GlobalStats{AttemptedOverTime: []int{}, AttemptedCurrent: 0}
+
 var minerSuccessRatesMap = make(map[int]*MinerSuccessRates)
 
 func InitMiners() {
 	for i := 0; i <= 256; i++ {
 		minerSuccessRatesMap[i] = &MinerSuccessRates{
 			SuccessRateOverTime: []float32{},
+			CompletedOverTime:   []int{},
 			AvgSuccessRate:      1,
 			LastReset:           time.Now(),
 		}
@@ -73,7 +83,26 @@ func ReportStats(public string, private string, hotkey string, logger *zap.Sugar
 	for k, v := range minerSuccessRatesMap {
 		data = append(data, JugoPayload{Data: JugoApiPayload{Api: v}, Uid: k})
 	}
+	totalAttempted := 0
+	for i := range globalStats.AttemptedOverTime {
+		totalAttempted += globalStats.AttemptedOverTime[i]
+	}
+
+	// -1 is our global registry
+	data = append(data, JugoPayload{Uid: -1, Data: JugoApiPayload{Api: map[string]any{
+		"totalAttemptedWindow": totalAttempted,
+	}}})
+
 	if reset {
+		// Total attempted window is the same as success rate
+		globalStats.mu.Lock()
+		globalStats.AttemptedOverTime = append(globalStats.AttemptedOverTime, globalStats.AttemptedCurrent)
+		if len(globalStats.AttemptedOverTime) > 10 {
+			globalStats.AttemptedOverTime = globalStats.AttemptedOverTime[1:]
+		}
+		globalStats.AttemptedCurrent = 0
+		globalStats.mu.Unlock()
+
 		for _, v := range minerSuccessRatesMap {
 			v.mu.Lock()
 			rate := float32(1)
@@ -86,6 +115,11 @@ func ReportStats(public string, private string, hotkey string, logger *zap.Sugar
 				v.SuccessRateOverTime = v.SuccessRateOverTime[1:]
 			}
 			v.AvgSuccessRate = min(avgOrOne(v.SuccessRateOverTime), 1)
+
+			v.CompletedOverTime = append(v.CompletedOverTime, v.Completed)
+			if len(v.CompletedOverTime) > 10 {
+				v.CompletedOverTime = v.CompletedOverTime[1:]
+			}
 			v.Completed = 0
 			v.Attempted = 0
 			v.Partial = 0
@@ -256,10 +290,14 @@ func QueryMiner(c *shared.Context, req *shared.RequestInfo) (*shared.ResponseInf
 		miner = *m
 	}
 
+	// Increment mutexes for in memory stats
 	m := minerSuccessRatesMap[miner.Uid]
 	m.mu.Lock()
 	m.Attempted++
 	m.mu.Unlock()
+	globalStats.mu.Lock()
+	globalStats.AttemptedCurrent++
+	globalStats.mu.Unlock()
 
 	tr := &http.Transport{
 		Dial: (&net.Dialer{
