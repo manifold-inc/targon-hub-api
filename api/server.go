@@ -58,12 +58,21 @@ func main() {
 	e.POST("/v1/completions", routes.CompletionRequest)
 	e.GET("/v1/models", routes.Models)
 
-	ticker := time.NewTicker(10 * time.Minute)
+	ticker := time.NewTicker(10 * time.Second)
 	defer ticker.Stop()
 
 	go func() {
+		count := 0
 		for range ticker.C {
-			go bittensor.ReportStats(cfg.Env.PublicKey, cfg.Env.PrivateKey, cfg.Env.Hotkey, sugar)
+			count++
+			reset := false
+			// reset every 5 minutes
+			// sliding window is 10 slots; total clear every 50 min
+			if count == 6*10 {
+				reset = true
+				count = 0
+			}
+			go bittensor.ReportStats(cfg.Env.PublicKey, cfg.Env.PrivateKey, cfg.Env.Hotkey, sugar, reset)
 		}
 	}()
 
