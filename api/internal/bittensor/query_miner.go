@@ -41,7 +41,6 @@ type MinerSuccessRates struct {
 	Completed           int       `json:"completed"`
 	Attempted           int       `json:"attempted"`
 	Partial             int       `json:"partial"`
-	ActualWeight        int       `json:"actualWeight"`
 	SuccessRateOverTime []float64 `json:"successRateOverTime"`
 	AvgSuccessRate      float64   `json:"avgSuccessRate"`
 	LastReset           time.Time `json:"lastReset"`
