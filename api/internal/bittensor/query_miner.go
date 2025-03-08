@@ -264,6 +264,11 @@ func getMinerForModel(c *shared.Context, model string, specific_uid *int) (*shar
 			weight = 1
 		}
 
+		// softcap weight for those with unproven success rates
+		if weight > 50 && successRate < .9 {
+			weight = 50
+		}
+
 		ch := randutil.Choice{Item: miners[i], Weight: weight}
 		choices = append(choices, ch)
 	}
