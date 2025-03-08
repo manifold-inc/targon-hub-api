@@ -166,11 +166,11 @@ func avgOrOne(arr []float64) float64 {
 	if length == 0 {
 		return 1
 	}
-	var sum float64
-	for i := 0; i < length; i++ {
+	var sum float64 = 0
+	for i := range arr {
 		sum += (arr[i])
 	}
-	avg := (float64(sum)) / (float64(length))
+	avg := sum / float64(length)
 	return avg
 }
 
@@ -209,7 +209,7 @@ func getMinerForModel(c *shared.Context, model string, specific_uid *int) (*shar
 			return &miners[i], nil
 		}
 		uid := miners[i].Uid
-		weight := int(float64(miners[i].Weight) * minerSuccessRatesMap[uid].AvgSuccessRate)
+		weight := max(int(float64(miners[i].Weight)*minerSuccessRatesMap[uid].AvgSuccessRate), 0)
 
 		ch := randutil.Choice{Item: miners[i], Weight: weight}
 		choices = append(choices, ch)
