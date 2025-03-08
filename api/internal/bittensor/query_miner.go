@@ -41,8 +41,8 @@ type MinerSuccessRates struct {
 	Completed           int       `json:"completed"`
 	Attempted           int       `json:"attempted"`
 	Partial             int       `json:"partial"`
-	SuccessRateOverTime []float64 `json:"successRateOverTime"`
-	AvgSuccessRate      float64   `json:"avgSuccessRate"`
+	SuccessRateOverTime []float32 `json:"successRateOverTime"`
+	AvgSuccessRate      float32   `json:"avgSuccessRate"`
 	LastReset           time.Time `json:"lastReset"`
 }
 
@@ -51,7 +51,7 @@ var minerSuccessRatesMap = make(map[int]*MinerSuccessRates)
 func InitMiners() {
 	for i := 0; i <= 256; i++ {
 		minerSuccessRatesMap[i] = &MinerSuccessRates{
-			SuccessRateOverTime: []float64{},
+			SuccessRateOverTime: []float32{},
 			AvgSuccessRate:      1,
 			LastReset:           time.Now(),
 		}
@@ -76,11 +76,16 @@ func ReportStats(public string, private string, hotkey string, logger *zap.Sugar
 	if reset {
 		for _, v := range minerSuccessRatesMap {
 			v.mu.Lock()
-			v.SuccessRateOverTime = append(v.SuccessRateOverTime, float64(v.Completed)/float64(v.Attempted))
+			rate := float32(1)
+			if v.Attempted != 0 {
+				rate = float32(v.Completed) / float32(v.Attempted)
+				rate = max(rate, 1)
+			}
+			v.SuccessRateOverTime = append(v.SuccessRateOverTime, rate)
 			if len(v.SuccessRateOverTime) > 10 {
 				v.SuccessRateOverTime = v.SuccessRateOverTime[1:]
 			}
-			v.AvgSuccessRate = avgOrOne(v.SuccessRateOverTime)
+			v.AvgSuccessRate = min(avgOrOne(v.SuccessRateOverTime), 1)
 			v.Completed = 0
 			v.Attempted = 0
 			v.Partial = 0
@@ -90,7 +95,11 @@ func ReportStats(public string, private string, hotkey string, logger *zap.Sugar
 	}
 
 	endpoint := "https://jugo.targon.com/mongo"
-	body, _ := json.Marshal(data)
+	body, err := json.Marshal(data)
+	if err != nil {
+		logger.Errorw("failed encoding jugo json", "error", err)
+		return
+	}
 
 	r, _ := http.NewRequest("POST", endpoint, bytes.NewBuffer(body))
 
@@ -159,16 +168,16 @@ func getMinersFromRedis(c *shared.Context, model string) (*[]shared.Miner, error
 	return &miners, nil
 }
 
-func avgOrOne(arr []float64) float64 {
+func avgOrOne(arr []float32) float32 {
 	length := len(arr)
 	if length == 0 {
 		return 1
 	}
-	var sum float64 = 0
+	var sum float32 = 0
 	for i := range arr {
-		sum += (arr[i])
+		sum += arr[i]
 	}
-	avg := sum / float64(length)
+	avg := sum / float32(length)
 	return avg
 }
 
@@ -207,7 +216,7 @@ func getMinerForModel(c *shared.Context, model string, specific_uid *int) (*shar
 			return &miners[i], nil
 		}
 		uid := miners[i].Uid
-		weight := max(int(float64(miners[i].Weight)*minerSuccessRatesMap[uid].AvgSuccessRate), 0)
+		weight := max(int(float32(miners[i].Weight)*minerSuccessRatesMap[uid].AvgSuccessRate), 0)
 
 		ch := randutil.Choice{Item: miners[i], Weight: weight}
 		choices = append(choices, ch)
@@ -247,12 +256,10 @@ func QueryMiner(c *shared.Context, req *shared.RequestInfo) (*shared.ResponseInf
 		miner = *m
 	}
 
-	go func() {
-		m := minerSuccessRatesMap[miner.Uid]
-		m.mu.Lock()
-		m.Attempted++
-		m.mu.Unlock()
-	}()
+	m := minerSuccessRatesMap[miner.Uid]
+	m.mu.Lock()
+	m.Attempted++
+	m.mu.Unlock()
 
 	tr := &http.Transport{
 		Dial: (&net.Dialer{
