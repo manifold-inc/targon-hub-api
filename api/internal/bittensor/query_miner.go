@@ -73,10 +73,6 @@ func ReportStats(public string, private string, hotkey string, logger *zap.Sugar
 	for k, v := range minerSuccessRatesMap {
 		data = append(data, JugoPayload{Data: JugoApiPayload{Api: v}, Uid: k})
 	}
-
-	endpoint := "https://jugo.targon.com/mongo"
-	body, _ := json.Marshal(data)
-
 	if reset {
 		for _, v := range minerSuccessRatesMap {
 			v.mu.Lock()
@@ -92,6 +88,10 @@ func ReportStats(public string, private string, hotkey string, logger *zap.Sugar
 			v.mu.Unlock()
 		}
 	}
+
+	endpoint := "https://jugo.targon.com/mongo"
+	body, _ := json.Marshal(data)
+
 	r, _ := http.NewRequest("POST", endpoint, bytes.NewBuffer(body))
 
 	// start creation of signature
