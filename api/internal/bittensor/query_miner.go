@@ -249,8 +249,20 @@ func getMinerForModel(c *shared.Context, model string, specific_uid *int) (*shar
 		if specific_uid != nil && miners[i].Uid == *specific_uid {
 			return &miners[i], nil
 		}
+
+		// Calculate weight factoring in success rate
 		uid := miners[i].Uid
-		weight := max(int(float32(miners[i].Weight)*minerSuccessRatesMap[uid].AvgSuccessRate), 0)
+
+		successRate := minerSuccessRatesMap[uid].AvgSuccessRate
+
+		// scale so we have room to play with percentages
+		weight := miners[i].Weight * 100
+		weight = max(int(float32(weight)*successRate), 0)
+
+		// Still need to give these miners a chance to re-gain trust, so cant fully zero
+		if successRate < .50 {
+			weight = 1
+		}
 
 		ch := randutil.Choice{Item: miners[i], Weight: weight}
 		choices = append(choices, ch)
