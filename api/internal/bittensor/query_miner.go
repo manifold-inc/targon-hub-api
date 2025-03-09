@@ -78,7 +78,7 @@ type JugoApiPayload struct {
 	Api any `json:"api"`
 }
 
-func ReportStats(public string, private string, hotkey string, logger *zap.SugaredLogger, reset bool) {
+func ReportStats(public string, private string, hotkey string, logger *zap.SugaredLogger, reset bool, debug bool) {
 	var data []JugoPayload
 	for k, v := range minerSuccessRatesMap {
 		data = append(data, JugoPayload{Data: JugoApiPayload{Api: v}, Uid: k})
@@ -126,6 +126,11 @@ func ReportStats(public string, private string, hotkey string, logger *zap.Sugar
 			v.LastReset = time.Now()
 			v.mu.Unlock()
 		}
+	}
+
+	if debug {
+		logger.Warn("skipping jugo post since debug")
+		return
 	}
 
 	endpoint := "https://jugo.targon.com/mongo"
@@ -432,6 +437,9 @@ func QueryMiner(c *shared.Context, req *shared.RequestInfo) (*shared.ResponseInf
 		default:
 			timer.Stop()
 			token := reader.Text()
+			if c.Cfg.Env.Debug {
+				fmt.Println(token)
+			}
 			fmt.Fprint(c.Response(), token+"\n\n")
 			c.Response().Flush()
 			if token == "data: [DONE]" {
@@ -479,12 +487,9 @@ func QueryMiner(c *shared.Context, req *shared.RequestInfo) (*shared.ResponseInf
 		Error:            responseError,
 	}
 	if !finished {
-		go func() {
-			m := minerSuccessRatesMap[miner.Uid]
-			m.mu.Lock()
-			m.Partial++
-			m.mu.Unlock()
-		}()
+		minerSuccessRatesMap[miner.Uid].mu.Lock()
+		minerSuccessRatesMap[miner.Uid].Partial++
+		minerSuccessRatesMap[miner.Uid].mu.Unlock()
 		responseInfo.Error = "Premature end of generation"
 		return responseInfo, nil
 	}
@@ -495,11 +500,8 @@ func QueryMiner(c *shared.Context, req *shared.RequestInfo) (*shared.ResponseInf
 		"duration", fmt.Sprintf("%d", time.Since(req.StartTime)/time.Millisecond),
 		"tokens", tokens,
 	)
-	go func() {
-		m := minerSuccessRatesMap[miner.Uid]
-		m.mu.Lock()
-		m.Completed++
-		m.mu.Unlock()
-	}()
+	minerSuccessRatesMap[miner.Uid].mu.Lock()
+	minerSuccessRatesMap[miner.Uid].Completed++
+	minerSuccessRatesMap[miner.Uid].mu.Unlock()
 	return responseInfo, nil
 }

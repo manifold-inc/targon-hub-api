@@ -73,7 +73,7 @@ func main() {
 				count = 0
 			}
 			sugar.Infof("Broadcasting stats to jugo. Tick %d", count)
-			bittensor.ReportStats(cfg.Env.PublicKey, cfg.Env.PrivateKey, cfg.Env.Hotkey, sugar, reset)
+			bittensor.ReportStats(cfg.Env.PublicKey, cfg.Env.PrivateKey, cfg.Env.Hotkey, sugar, reset, cfg.Env.Debug)
 			sugar.Infof("Finished jugo broadcast. Tick %d", count)
 		}
 	}()

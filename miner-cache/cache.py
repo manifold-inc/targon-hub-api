@@ -16,6 +16,8 @@ from logconfig import setupLogging
 
 logger = setupLogging()
 
+DEBUG = os.getenv("DEBUG", False)
+
 
 async def get_models(session, hotkey, axon) -> Tuple[Dict[str, int], str]:
     headers = generate_header(hotkey, b"", axon.hotkey)
@@ -36,6 +38,8 @@ async def get_models(session, hotkey, axon) -> Tuple[Dict[str, int], str]:
 
 
 async def send_uid_info_to_jugo(session: aiohttp.ClientSession, data: List[Dict]):
+    if DEBUG:
+        return
     req_bytes = json.dumps(
         data, ensure_ascii=False, separators=(",", ":"), allow_nan=False
     ).encode("utf-8")
@@ -116,9 +120,7 @@ async def sync_miners():
                 miner_models[model] = []
             miner_models[model].append(redis_miner_data)
 
-    async with aiohttp.ClientSession(
-        timeout=aiohttp.ClientTimeout(total=5)
-    ) as session:
+    async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=5)) as session:
         await send_uid_info_to_jugo(session, jugo_info_list)
     for model in miner_models.keys():
         r.json().set(model, obj=miner_models[model], path=Path.root_path())

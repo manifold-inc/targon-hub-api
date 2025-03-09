@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"math/rand"
 	"strconv"
@@ -96,6 +97,7 @@ func preprocessOpenaiRequest(
 	if _, ok := payload["max_tokens"]; !ok {
 		payload["max_tokens"] = 512
 	}
+	fmt.Println(payload["max_tokens"])
 
 	if logprobs, ok := payload["logprobs"]; !ok || !logprobs.(bool) {
 		payload["logprobs"] = true
@@ -121,6 +123,7 @@ func preprocessOpenaiRequest(
 	miner_uid, err := strconv.Atoi(miner)
 	if err == nil {
 		res.Miner = &miner_uid
+		c.Log.Infof("selecting miner %d", miner_uid)
 	}
 	res.MinerHost = minerHost
 
