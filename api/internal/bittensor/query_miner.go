@@ -312,6 +312,7 @@ func QueryMiner(c *shared.Context, req *shared.RequestInfo) (*shared.ResponseInf
 		}
 		miner = *m
 	}
+	c.Log = c.Log.With("uid")
 
 	// Increment mutexes for in memory stats
 	m := minerSuccessRatesMap[miner.Uid]
@@ -417,12 +418,6 @@ func QueryMiner(c *shared.Context, req *shared.RequestInfo) (*shared.ResponseInf
 
 	c.Log.Infow(
 		"Sending organic to miner",
-		"hotkey",
-		miner.Hotkey,
-		"coldkey",
-		miner.Coldkey,
-		"uid",
-		miner.Uid,
 	)
 	reader := bufio.NewScanner(res.Body)
 	finished := false
@@ -499,7 +494,6 @@ func QueryMiner(c *shared.Context, req *shared.RequestInfo) (*shared.ResponseInf
 		"status", "success",
 		"duration", fmt.Sprintf("%d", time.Since(req.StartTime)/time.Millisecond),
 		"tokens", tokens,
-		"uid", miner.Uid,
 	)
 	go func() {
 		m := minerSuccessRatesMap[miner.Uid]
