@@ -52,9 +52,6 @@ func ProcessOpenaiRequest(cc echo.Context, endpoint string) error {
 	if len(res.Responses) > 15 {
 		c.Log.Warnw(
 			"failed request mid stream, canceling request",
-			"uid", res.Miner.Uid,
-			"hotkey", res.Miner.Hotkey,
-			"coldkey", res.Miner.Coldkey,
 			"error", res.Error,
 			"final", "true",
 			"status", "partial",
@@ -75,9 +72,6 @@ func ProcessOpenaiRequest(cc echo.Context, endpoint string) error {
 
 	c.Log.Warnw(
 		"failed request, sending to fallback",
-		"uid", res.Miner.Uid,
-		"hotkey", res.Miner.Hotkey,
-		"coldkey", res.Miner.Coldkey,
 		"error", res.Error,
 	)
 	qerr := QueryFallback(c, request)
