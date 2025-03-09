@@ -312,7 +312,7 @@ func QueryMiner(c *shared.Context, req *shared.RequestInfo) (*shared.ResponseInf
 		}
 		miner = *m
 	}
-	c.Log = c.Log.With("uid")
+	c.Log = c.Log.With("uid", miner.Uid)
 
 	// Increment mutexes for in memory stats
 	m := minerSuccessRatesMap[miner.Uid]
