@@ -493,6 +493,7 @@ func QueryMiner(c *shared.Context, req *shared.RequestInfo) (*shared.ResponseInf
 			minerSuccessRatesMap[miner.Uid].mu.Lock()
 			minerSuccessRatesMap[miner.Uid].Attempted = max(minerSuccessRatesMap[miner.Uid].Attempted-1, 0)
 			minerSuccessRatesMap[miner.Uid].mu.Unlock()
+			responseInfo.Error = "user canceled request"
 			return responseInfo, nil
 		default:
 			break
