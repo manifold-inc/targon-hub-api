@@ -48,9 +48,9 @@ func SaveRequest(sqlClient *sql.DB, res *shared.ResponseInfo, req *shared.Reques
 	}
 
 	// Update credits
-	usedCredits := 0
-	input_tokens_approx := len(string(req.Body)) / 10
-	usedCredits = (res.ResponseTokens + input_tokens_approx) * cpt
+	usedCredits := int64(0)
+	input_tokens_approx := max(len(string(req.Body))/10, 1)
+	usedCredits = (int64(res.ResponseTokens) + int64(input_tokens_approx)) * int64(cpt)
 
 	if !req.Chargeable {
 		usedCredits = 0
@@ -68,10 +68,11 @@ func SaveRequest(sqlClient *sql.DB, res *shared.ResponseInfo, req *shared.Reques
 		logger.Errorw("Error fetching user data from api key", "error", err)
 		startingCredits = req.StartingCredits
 	}
-
+	total_credits_used := int64(0)
 	if usedCredits != 0 {
+		total_credits_used = max(startingCredits-(usedCredits), 0)
 		_, err = sqlClient.Exec("UPDATE user SET credits=? WHERE id=?",
-			max(startingCredits-(int64(usedCredits)), 0),
+			total_credits_used,
 			req.UserId)
 		if err != nil {
 			logger.Errorf("Failed to update credits: %d - %d\n%s\n", req.StartingCredits, usedCredits, err)
@@ -93,7 +94,7 @@ func SaveRequest(sqlClient *sql.DB, res *shared.ResponseInfo, req *shared.Reques
 		VALUES	(?,      ?,       ?,            ?,       ?,        ?,        ?,   ?,      ?,       ?,             ?,        ?,       ?,                   ?,          ?)`,
 		req.Id,
 		req.UserId,
-		0,
+		total_credits_used,
 		string(req.Body),
 		NewNullString(string(responseJson)),
 		model_id,
