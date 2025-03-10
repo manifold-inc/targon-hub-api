@@ -52,7 +52,7 @@ func ProcessOpenaiRequest(cc echo.Context, endpoint string) error {
 			"final", "true",
 		)
 		return c.JSON(500, shared.OpenAIError{
-			Message: err.Error(),
+			Message: err_string,
 			Object:  "error",
 			Type:    "InternalServerError",
 			Code:    500,
