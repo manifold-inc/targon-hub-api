@@ -487,6 +487,16 @@ func QueryMiner(c *shared.Context, req *shared.RequestInfo) (*shared.ResponseInf
 		Error:            responseError,
 	}
 	if !finished {
+		select {
+		// If user cancelled request, we remove it from the attempted
+		case <-c.Request().Context().Done():
+			minerSuccessRatesMap[miner.Uid].mu.Lock()
+			minerSuccessRatesMap[miner.Uid].Attempted = max(minerSuccessRatesMap[miner.Uid].Attempted-1, 0)
+			minerSuccessRatesMap[miner.Uid].mu.Unlock()
+			return responseInfo, nil
+		default:
+			break
+		}
 		minerSuccessRatesMap[miner.Uid].mu.Lock()
 		minerSuccessRatesMap[miner.Uid].Partial++
 		minerSuccessRatesMap[miner.Uid].mu.Unlock()

@@ -30,11 +30,25 @@ func ProcessOpenaiRequest(cc echo.Context, endpoint string) error {
 	}
 
 	res, err := bittensor.QueryMiner(c, request)
-	if err != nil {
+
+	// Dont save requests user cancelled
+	user_cancelled := false
+	select {
+	case <-c.Request().Context().Done():
+		user_cancelled = true
+	default:
+		break
+	}
+
+	if err != nil || user_cancelled {
+		err_string := "sender cancelled context"
+		if !user_cancelled {
+			err_string = err.Error()
+		}
 		c.Log.Warnw(
 			"Failed request, most likely un-recoverable. Not sending to fallback",
 			"status", "failed",
-			"error", err.Error(),
+			"error", err_string,
 			"final", "true",
 		)
 		return c.JSON(500, shared.OpenAIError{
