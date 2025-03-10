@@ -97,7 +97,6 @@ func preprocessOpenaiRequest(
 	if _, ok := payload["max_tokens"]; !ok {
 		payload["max_tokens"] = 512
 	}
-	fmt.Println(payload["max_tokens"])
 
 	if logprobs, ok := payload["logprobs"]; !ok || !logprobs.(bool) {
 		payload["logprobs"] = true

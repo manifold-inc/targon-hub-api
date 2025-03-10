@@ -94,7 +94,7 @@ func SaveRequest(sqlClient *sql.DB, res *shared.ResponseInfo, req *shared.Reques
 		VALUES	(?,      ?,       ?,            ?,       ?,        ?,        ?,   ?,      ?,       ?,             ?,        ?,       ?,                   ?,          ?)`,
 		req.Id,
 		req.UserId,
-		total_credits_used,
+		0,
 		string(req.Body),
 		NewNullString(string(responseJson)),
 		model_id,
