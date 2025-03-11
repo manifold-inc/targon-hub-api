@@ -5,6 +5,7 @@ import (
 
 	"api/internal/bittensor"
 	"api/internal/config"
+	"api/internal/ratelimit"
 	"api/internal/routes"
 	"api/internal/shared"
 
@@ -54,8 +55,16 @@ func main() {
 			return c.String(500, "Internal Server Error")
 		},
 	}))
-	e.POST("/v1/chat/completions", routes.ChatRequest)
-	e.POST("/v1/completions", routes.CompletionRequest)
+
+	// Create a group for rate-limited endpoints
+	rateLimitedGroup := e.Group("")
+	rateLimitedGroup.Use(ratelimit.ConfigureRateLimiter(cfg.SqlClient, cfg.RedisClient))
+
+	// Apply rate limiting to chat and completions endpoints
+	rateLimitedGroup.POST("/v1/chat/completions", routes.ChatRequest)
+	rateLimitedGroup.POST("/v1/completions", routes.CompletionRequest)
+
+	// Non-rate-limited endpoints
 	e.GET("/v1/models", routes.Models)
 
 	ticker := time.NewTicker(10 * time.Second)
