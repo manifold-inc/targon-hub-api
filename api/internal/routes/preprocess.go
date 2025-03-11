@@ -97,9 +97,6 @@ func preprocessOpenaiRequest(
 		payload["max_tokens"] = 512
 	}
 
-	if logprobs, ok := payload["logprobs"]; !ok || !logprobs.(bool) {
-		payload["logprobs"] = true
-	}
 	payload["stream_options"] = map[string]any{
 		"include_usage": true,
 	}
