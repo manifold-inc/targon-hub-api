@@ -50,16 +50,6 @@ type RedisRateLimiter struct {
 	expiresIn   time.Duration
 }
 
-// NewRedisRateLimiter creates a new Redis-based rate limiter
-func NewRedisRateLimiter(redisClient *redis.Client, r rate.Limit, burst int, expiresIn time.Duration) *RedisRateLimiter {
-	return &RedisRateLimiter{
-		redisClient: redisClient,
-		rate:        r,
-		burst:       burst,
-		expiresIn:   expiresIn,
-	}
-}
-
 // Allow checks if a request is allowed based on the rate limit
 func (r *RedisRateLimiter) Allow(ctx context.Context, identifier string) (bool, error) {
 	now := time.Now()
@@ -116,10 +106,7 @@ func (r *RedisRateLimiter) GetRateLimitResult(ctx context.Context, identifier st
 	}
 
 	// Calculate remaining requests
-	remaining := int64(r.burst) - count
-	if remaining < 0 {
-		remaining = 0
-	}
+	remaining := max(int64(r.burst)-count, 0)
 
 	resetTime := now.Add(r.expiresIn)
 
@@ -146,7 +133,7 @@ func IsApiKeyChargeable(ctx context.Context, redisClient *redis.Client, db *sql.
 	}
 
 	// Handle Redis errors other than key not found
-	if err != redis.Nil && logger != nil {
+	if err != redis.Nil {
 		logger.Warnw("Redis error when checking chargeable status", "error", err, "apiKey", apiKey)
 	}
 
@@ -216,12 +203,12 @@ func (s *CustomRateLimiterStore) Allow(identifier string) (bool, error) {
 
 // ConfigureRateLimiter sets up the Echo rate limiter middleware
 func ConfigureRateLimiter(db *sql.DB, redisClient *redis.Client) echo.MiddlewareFunc {
-	limiter := NewRedisRateLimiter(
-		redisClient,
-		rate.Limit(requestsPerSecond),
-		burstSize,
-		rateLimitWindow,
-	)
+	limiter := &RedisRateLimiter{
+		redisClient: redisClient,
+		rate:        rate.Limit(requestsPerSecond),
+		burst:       burstSize,
+		expiresIn:   rateLimitWindow,
+	}
 
 	store := &CustomRateLimiterStore{
 		limiter: limiter,
