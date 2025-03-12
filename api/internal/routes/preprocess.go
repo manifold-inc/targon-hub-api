@@ -39,7 +39,7 @@ func preprocessOpenaiRequest(
 		c.Log.Warnf("no user found for bearer token %s", bearer)
 		return nil, &shared.RequestError{StatusCode: 401, Err: errors.New("unauthorized")}
 	}
-	if err != nil {
+	if err != nil && !c.Cfg.Env.Debug {
 		c.Log.Errorw("Error fetching user data from api key", "error", err)
 		return nil, &shared.RequestError{StatusCode: 500, Err: errors.New("internal server error")}
 	}
