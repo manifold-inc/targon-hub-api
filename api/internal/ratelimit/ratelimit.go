@@ -11,6 +11,8 @@ import (
 
 	"api/internal/shared"
 
+	"errors"
+
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 	"github.com/redis/go-redis/v9"
@@ -288,10 +290,21 @@ func ConfigureRateLimiter(db *sql.DB, redisClient *redis.Client) echo.Middleware
 
 			result, resultErr := limiter.GetRateLimitResult(ctx, identifier)
 			if resultErr != nil {
-				cc.Log.Errorw("Failed to get rate limit result",
-					"error", resultErr.Error(),
-					"apiKey", shortIdentifier,
-				)
+				if errors.Is(resultErr, context.Canceled) {
+					cc.Log.Infow("Client likely canceled request during rate limit check",
+						"apiKey", shortIdentifier,
+					)
+				} else if errors.Is(resultErr, context.DeadlineExceeded) {
+					cc.Log.Infow("Rate limit request timed out",
+						"apiKey", shortIdentifier,
+					)
+				} else {
+					cc.Log.Errorw("Failed to get rate limit result",
+						"error", resultErr.Error(),
+						"apiKey", shortIdentifier,
+					)
+				}
+
 				defaultHeaders(c)
 			} else {
 				// Set headers with actual rate limit information
