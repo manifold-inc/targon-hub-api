@@ -283,6 +283,9 @@ func getMinerForModel(c *shared.Context, model string, specific_uid *int) (*shar
 		ch := randutil.Choice{Item: miners[i], Weight: weight}
 		choices = append(choices, ch)
 	}
+	if specific_uid != nil {
+		return nil, errors.New("couldnt find uid %d")
+	}
 	choice, err := randutil.WeightedChoice(choices)
 	if err != nil {
 		c.Log.Warnw("Failed getting weighted random choice", "error", err.Error())
@@ -313,7 +316,7 @@ func QueryMiner(c *shared.Context, req *shared.RequestInfo) (*shared.ResponseInf
 	if len(req.MinerHost) == 0 {
 		m, err := getMinerForModel(c, req.Model, req.Miner)
 		if err != nil {
-			return nil, errors.New("no miners")
+			return nil, err
 		}
 		miner = *m
 	}
