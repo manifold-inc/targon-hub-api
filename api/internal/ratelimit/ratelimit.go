@@ -26,11 +26,11 @@ const (
 	// TTL for chargeable status in Redis
 	chargeableTTL = 24 * time.Hour
 
-	requestsPerSecond = 1
+	requestsPerSecond = 0.2
 	// Burst limit: allow this many requests in a burst (can be adjusted based on load)
 	burstSize = 5
 	// Window size for rate limiting (sliding window)
-	rateLimitWindow = 1 * time.Second
+	rateLimitWindow = 5 * time.Second
 
 	// Redis key prefix for rate limiting
 	rateLimitKeyPrefix = "ratelimit:"
