@@ -55,7 +55,9 @@ func ProcessOpenaiRequest(cc echo.Context, endpoint string) error {
 		})
 	}
 
-	go database.SaveRequest(c.Cfg.SqlClient, res, request, c.Log)
+	// Save request in background
+	go database.SaveRequest(c.Cfg.SqlClient, c.Cfg.ReadSqlClient, res, request, c.Log)
+
 	if res.Success {
 		return c.String(200, "")
 	}

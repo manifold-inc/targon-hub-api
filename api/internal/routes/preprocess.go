@@ -33,7 +33,7 @@ func preprocessOpenaiRequest(
 		userid     int
 		chargeable bool
 	)
-	err := c.Cfg.SqlClient.QueryRow("SELECT user.credits, user.id, user.chargeable FROM user INNER JOIN api_key ON user.id = api_key.user_id WHERE api_key.id = ?", strings.Split(bearer, " ")[1]).
+	err := c.Cfg.ReadSqlClient.QueryRow("SELECT user.credits, user.id, user.chargeable FROM user INNER JOIN api_key ON user.id = api_key.user_id WHERE api_key.id = ?", strings.Split(bearer, " ")[1]).
 		Scan(&credits, &userid, &chargeable)
 	if err == sql.ErrNoRows && !c.Cfg.Env.Debug {
 		c.Log.Warnf("no user found for bearer token %s", bearer)

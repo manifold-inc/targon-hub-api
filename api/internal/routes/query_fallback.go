@@ -18,7 +18,7 @@ import (
 func QueryFallback(c *shared.Context, req *shared.RequestInfo) *shared.RequestError {
 	// Get Fallback Server
 	var fallback_server string
-	err := c.Cfg.SqlClient.QueryRow("SELECT model.fallback_server FROM model WHERE model.name = ?", req.Model).
+	err := c.Cfg.ReadSqlClient.QueryRow("SELECT model.fallback_server FROM model WHERE model.name = ?", req.Model).
 		Scan(&fallback_server)
 	if err == sql.ErrNoRows && !c.Cfg.Env.Debug {
 		return &shared.RequestError{StatusCode: 400, Err: fmt.Errorf("no model found for %s", req.Model)}

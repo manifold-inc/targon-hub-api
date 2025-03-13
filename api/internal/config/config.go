@@ -15,9 +15,10 @@ import (
 )
 
 type Config struct {
-	Env         Environment
-	RedisClient *redis.Client
-	SqlClient   *sql.DB
+	Env           Environment
+	RedisClient   *redis.Client
+	SqlClient     *sql.DB
+	ReadSqlClient *sql.DB
 }
 
 func (c *Config) Shutdown() {
@@ -26,6 +27,9 @@ func (c *Config) Shutdown() {
 	}
 	if c.SqlClient != nil {
 		c.SqlClient.Close()
+	}
+	if c.ReadSqlClient != nil {
+		c.ReadSqlClient.Close()
 	}
 }
 
@@ -78,6 +82,11 @@ func InitConfig() (*Config, []error) {
 	if err != nil {
 		errs = append(errs, err)
 	}
+	READ_DSN, err := safeEnv("READ_DSN")
+	if err != nil {
+		errs = append(errs, err)
+	}
+
 	REDIS_HOST := getEnv("REDIS_HOST", "cache")
 	REDIS_PORT := getEnv("REDIS_PORT", "6379")
 	INSTANCE_UUID := uuid.New().String()
@@ -91,7 +100,7 @@ func InitConfig() (*Config, []error) {
 		return nil, errs
 	}
 
-	// Load DB connections
+	// Load PrimaryDB connections
 	sqlClient, err := sql.Open("mysql", DSN)
 	if err != nil {
 		return nil, []error{errors.New("failed initializing sqlClient"), err}
@@ -99,6 +108,16 @@ func InitConfig() (*Config, []error) {
 	err = sqlClient.Ping()
 	if err != nil {
 		return nil, []error{errors.New("failed ping to sql db"), err}
+	}
+
+	// Load Read Replica DB connection
+	readSqlClient, err := sql.Open("mysql", READ_DSN)
+	if err != nil {
+		return nil, []error{errors.New("failed initializing readSqlClient"), err}
+	}
+	err = readSqlClient.Ping()
+	if err != nil {
+		return nil, []error{errors.New("failed to ping read replica sql db"), err}
 	}
 
 	redisClient := redis.NewClient(&redis.Options{
@@ -119,7 +138,8 @@ func InitConfig() (*Config, []error) {
 			InstanceUUID:   INSTANCE_UUID,
 			Debug:          DEBUG,
 		},
-		SqlClient:   sqlClient,
-		RedisClient: redisClient,
+		SqlClient:     sqlClient,
+		ReadSqlClient: readSqlClient,
+		RedisClient:   redisClient,
 	}, nil
 }

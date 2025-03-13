@@ -18,7 +18,7 @@ type UserMutex struct {
 
 var userMutexes = UserMutex{umap: make(map[int]*sync.Mutex)}
 
-func SaveRequest(sqlClient *sql.DB, res *shared.ResponseInfo, req *shared.RequestInfo, logger *zap.SugaredLogger) {
+func SaveRequest(sqlClient *sql.DB, readSqlClient *sql.DB, res *shared.ResponseInfo, req *shared.RequestInfo, logger *zap.SugaredLogger) {
 	userMutexes.mu.Lock()
 	if _, ok := userMutexes.umap[req.UserId]; !ok {
 		userMutexes.umap[req.UserId] = &sync.Mutex{}
@@ -40,7 +40,7 @@ func SaveRequest(sqlClient *sql.DB, res *shared.ResponseInfo, req *shared.Reques
 		logger.Error("No model in body")
 		return
 	}
-	err = sqlClient.QueryRow("SELECT id, cpt FROM model WHERE name = ?", model.(string)).
+	err = readSqlClient.QueryRow("SELECT id, cpt FROM model WHERE name = ?", model.(string)).
 		Scan(&model_id, &cpt)
 	if err != nil {
 		logger.Warnw("Failed to get model "+model.(string), "error", err.Error())
@@ -58,7 +58,7 @@ func SaveRequest(sqlClient *sql.DB, res *shared.ResponseInfo, req *shared.Reques
 
 	userMutexes.umap[req.UserId].Lock()
 	var startingCredits int64
-	err = sqlClient.QueryRow("SELECT user.credits FROM user  WHERE user.id = ?", req.UserId).
+	err = readSqlClient.QueryRow("SELECT user.credits FROM user  WHERE user.id = ?", req.UserId).
 		Scan(&startingCredits)
 	if err == sql.ErrNoRows {
 		logger.Warnf("no user found for user id %d", req.UserId)
