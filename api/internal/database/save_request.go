@@ -90,11 +90,11 @@ func SaveRequest(sqlClient *sql.DB, readSqlClient *sql.DB, res *shared.ResponseI
 
 	_, err = sqlClient.Exec(`
 	INSERT INTO 
-		request (pub_id, user_id, credits_used, request, response, model_id, uid, hotkey, coldkey, miner_address, endpoint, success, time_to_first_token, total_time, scored)
+		request (pub_id, user_id, used_credits, request, response, model_id, uid, hotkey, coldkey, miner_address, endpoint, success, time_to_first_token, total_time, scored)
 		VALUES	(?,      ?,       ?,            ?,       ?,        ?,        ?,   ?,      ?,       ?,             ?,        ?,       ?,                   ?,          ?)`,
 		req.Id,
 		req.UserId,
-		0,
+		total_credits_used,
 		string(req.Body),
 		NewNullString(string(responseJson)),
 		model_id,
