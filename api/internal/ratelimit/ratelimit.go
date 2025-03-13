@@ -121,7 +121,7 @@ func (r *RedisRateLimiter) GetRateLimitResult(ctx context.Context, identifier st
 }
 
 // IsApiKeyChargeable checks if an API key is chargeable, using Redis as a cache
-func IsApiKeyChargeable(ctx context.Context, redisClient *redis.Client, db *sql.DB, readDb *sql.DB, apiKey string, logger *zap.SugaredLogger) (bool, error) {
+func IsApiKeyChargeable(ctx context.Context, redisClient *redis.Client, readDb *sql.DB, apiKey string, logger *zap.SugaredLogger) (bool, error) {
 	if apiKey == "" {
 		return false, fmt.Errorf("empty API key")
 	}
@@ -204,7 +204,7 @@ func (s *CustomRateLimiterStore) Allow(identifier string) (bool, error) {
 }
 
 // ConfigureRateLimiter sets up the Echo rate limiter middleware
-func ConfigureRateLimiter(db *sql.DB, readDb *sql.DB, redisClient *redis.Client) echo.MiddlewareFunc {
+func ConfigureRateLimiter(readDb *sql.DB, redisClient *redis.Client) echo.MiddlewareFunc {
 	limiter := &RedisRateLimiter{
 		redisClient: redisClient,
 		rate:        rate.Limit(requestsPerSecond),
@@ -229,7 +229,7 @@ func ConfigureRateLimiter(db *sql.DB, readDb *sql.DB, redisClient *redis.Client)
 				return true
 			}
 
-			chargeable, err := IsApiKeyChargeable(c.Request().Context(), redisClient, db, readDb, apiKey, cc.Log)
+			chargeable, err := IsApiKeyChargeable(c.Request().Context(), redisClient, readDb, apiKey, cc.Log)
 			if err != nil {
 				if err != redis.Nil {
 					cc.Log.Warnw("Redis error when checking if API key is chargeable", "error", err.Error(), "apiKey", apiKey)
