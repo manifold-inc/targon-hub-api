@@ -42,6 +42,7 @@ type MinerSuccessRates struct {
 	CompletedOverTime   []int     `json:"completedOverTime"`
 	Attempted           int       `json:"attempted"`
 	Partial             int       `json:"partial"`
+	InFlight            int       `json:"inFlight"`
 	SuccessRateOverTime []float32 `json:"successRateOverTime"`
 	AvgSuccessRate      float32   `json:"avgSuccessRate"`
 	LastReset           time.Time `json:"lastReset"`
@@ -106,8 +107,11 @@ func ReportStats(public string, private string, hotkey string, logger *zap.Sugar
 		for _, v := range minerSuccessRatesMap {
 			v.mu.Lock()
 			rate := float32(1)
-			if v.Attempted != 0 {
-				rate = float32(v.Completed) / float32(v.Attempted)
+			if v.Attempted > 0 {
+				completedRequests := v.Attempted - v.InFlight
+				if completedRequests > 0 {
+					rate = float32(v.Completed) / float32(completedRequests)
+				}
 				rate = min(rate, 1)
 			}
 			v.SuccessRateOverTime = append(v.SuccessRateOverTime, rate)
@@ -120,8 +124,9 @@ func ReportStats(public string, private string, hotkey string, logger *zap.Sugar
 			if len(v.CompletedOverTime) > 10 {
 				v.CompletedOverTime = v.CompletedOverTime[1:]
 			}
+			
 			v.Completed = 0
-			v.Attempted = 0
+			v.Attempted = v.InFlight
 			v.Partial = 0
 			v.LastReset = time.Now()
 			v.mu.Unlock()
@@ -326,6 +331,7 @@ func QueryMiner(c *shared.Context, req *shared.RequestInfo) (*shared.ResponseInf
 	m := minerSuccessRatesMap[miner.Uid]
 	m.mu.Lock()
 	m.Attempted++
+	m.InFlight++
 	m.mu.Unlock()
 	globalStats.mu.Lock()
 	globalStats.AttemptedCurrent++
@@ -495,6 +501,7 @@ func QueryMiner(c *shared.Context, req *shared.RequestInfo) (*shared.ResponseInf
 		case <-c.Request().Context().Done():
 			minerSuccessRatesMap[miner.Uid].mu.Lock()
 			minerSuccessRatesMap[miner.Uid].Attempted = max(minerSuccessRatesMap[miner.Uid].Attempted-1, 0)
+			minerSuccessRatesMap[miner.Uid].InFlight--
 			minerSuccessRatesMap[miner.Uid].mu.Unlock()
 			responseInfo.Error = "user canceled request"
 			return responseInfo, nil
@@ -503,6 +510,7 @@ func QueryMiner(c *shared.Context, req *shared.RequestInfo) (*shared.ResponseInf
 		}
 		minerSuccessRatesMap[miner.Uid].mu.Lock()
 		minerSuccessRatesMap[miner.Uid].Partial++
+		minerSuccessRatesMap[miner.Uid].InFlight--
 		minerSuccessRatesMap[miner.Uid].mu.Unlock()
 		responseInfo.Error = "Premature end of generation"
 		return responseInfo, nil
@@ -516,6 +524,7 @@ func QueryMiner(c *shared.Context, req *shared.RequestInfo) (*shared.ResponseInf
 	)
 	minerSuccessRatesMap[miner.Uid].mu.Lock()
 	minerSuccessRatesMap[miner.Uid].Completed++
+	minerSuccessRatesMap[miner.Uid].InFlight--
 	minerSuccessRatesMap[miner.Uid].mu.Unlock()
 	return responseInfo, nil
 }
