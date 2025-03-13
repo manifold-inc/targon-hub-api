@@ -24,7 +24,7 @@ func Models(cc echo.Context) error {
 	c := cc.(*shared.Context)
 	defer c.Log.Sync()
 
-	rows, err := c.Cfg.SqlClient.Query(`
+	rows, err := c.Cfg.ReadSqlClient.Query(`
 			SELECT name, DATE_FORMAT(created_at, '%Y-%m-%d %H:%i:%s') as created_at 
 			FROM model WHERE enabled = 1
 		`)

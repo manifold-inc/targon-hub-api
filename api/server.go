@@ -58,7 +58,7 @@ func main() {
 
 	// Create a group for rate-limited endpoints
 	rateLimitedGroup := e.Group("")
-	rateLimitedGroup.Use(ratelimit.ConfigureRateLimiter(cfg.SqlClient, cfg.RedisClient))
+	rateLimitedGroup.Use(ratelimit.ConfigureRateLimiter(cfg.SqlClient, cfg.ReadSqlClient, cfg.RedisClient))
 
 	// Apply rate limiting to chat and completions endpoints
 	rateLimitedGroup.POST("/v1/chat/completions", routes.ChatRequest)
