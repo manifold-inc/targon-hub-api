@@ -108,7 +108,7 @@ func ReportStats(public string, private string, hotkey string, logger *zap.Sugar
 			v.mu.Lock()
 			rate := float32(1)
 			if v.Attempted > 0 && v.Attempted > v.InFlight {
-			    rate = min(float32(v.Completed)/float32(v.Attempted-v.InFlight), 1)
+				rate = min(float32(v.Completed)/float32(v.Attempted-v.InFlight), 1)
 			}
 			v.SuccessRateOverTime = append(v.SuccessRateOverTime, rate)
 			if len(v.SuccessRateOverTime) > 10 {
@@ -120,7 +120,7 @@ func ReportStats(public string, private string, hotkey string, logger *zap.Sugar
 			if len(v.CompletedOverTime) > 10 {
 				v.CompletedOverTime = v.CompletedOverTime[1:]
 			}
-			
+
 			v.Completed = 0
 			v.Attempted = v.InFlight
 			v.Partial = 0
@@ -328,6 +328,11 @@ func QueryMiner(c *shared.Context, req *shared.RequestInfo) (*shared.ResponseInf
 	m.mu.Lock()
 	m.Attempted++
 	m.InFlight++
+	defer func() {
+		minerSuccessRatesMap[miner.Uid].mu.Lock()
+		minerSuccessRatesMap[miner.Uid].InFlight--
+		minerSuccessRatesMap[miner.Uid].mu.Unlock()
+	}()
 	m.mu.Unlock()
 	globalStats.mu.Lock()
 	globalStats.AttemptedCurrent++
@@ -497,7 +502,6 @@ func QueryMiner(c *shared.Context, req *shared.RequestInfo) (*shared.ResponseInf
 		case <-c.Request().Context().Done():
 			minerSuccessRatesMap[miner.Uid].mu.Lock()
 			minerSuccessRatesMap[miner.Uid].Attempted = max(minerSuccessRatesMap[miner.Uid].Attempted-1, 0)
-			minerSuccessRatesMap[miner.Uid].InFlight--
 			minerSuccessRatesMap[miner.Uid].mu.Unlock()
 			responseInfo.Error = "user canceled request"
 			return responseInfo, nil
@@ -506,7 +510,6 @@ func QueryMiner(c *shared.Context, req *shared.RequestInfo) (*shared.ResponseInf
 		}
 		minerSuccessRatesMap[miner.Uid].mu.Lock()
 		minerSuccessRatesMap[miner.Uid].Partial++
-		minerSuccessRatesMap[miner.Uid].InFlight--
 		minerSuccessRatesMap[miner.Uid].mu.Unlock()
 		responseInfo.Error = "Premature end of generation"
 		return responseInfo, nil
@@ -520,7 +523,6 @@ func QueryMiner(c *shared.Context, req *shared.RequestInfo) (*shared.ResponseInf
 	)
 	minerSuccessRatesMap[miner.Uid].mu.Lock()
 	minerSuccessRatesMap[miner.Uid].Completed++
-	minerSuccessRatesMap[miner.Uid].InFlight--
 	minerSuccessRatesMap[miner.Uid].mu.Unlock()
 	return responseInfo, nil
 }
