@@ -108,7 +108,7 @@ func SaveRequest(sqlClient *sql.DB, readSqlClient *sql.DB, res *shared.ResponseI
 		res.Success,
 		timeForFirstToken,
 		res.TotalTime,
-		req.Miner != nil,
+		req.Miner != nil || req.Chargeable,
 	)
 	if err != nil {
 		logger.Errorw("Failed to update", "error", err.Error())
