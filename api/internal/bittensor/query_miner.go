@@ -107,12 +107,8 @@ func ReportStats(public string, private string, hotkey string, logger *zap.Sugar
 		for _, v := range minerSuccessRatesMap {
 			v.mu.Lock()
 			rate := float32(1)
-			if v.Attempted > 0 {
-				completedRequests := v.Attempted - v.InFlight
-				if completedRequests > 0 {
-					rate = float32(v.Completed) / float32(completedRequests)
-				}
-				rate = min(rate, 1)
+			if v.Attempted > 0 && v.Attempted > v.InFlight {
+			    rate = min(float32(v.Completed)/float32(v.Attempted-v.InFlight), 1)
 			}
 			v.SuccessRateOverTime = append(v.SuccessRateOverTime, rate)
 			if len(v.SuccessRateOverTime) > 10 {
