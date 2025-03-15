@@ -486,6 +486,10 @@ func QueryMiner(c *shared.Context, req *shared.RequestInfo) (*shared.ResponseInf
 	res.Body.Close()
 	totalTime := int64(time.Since(start) / time.Millisecond)
 
+	if len(llmResponse) < 2 {
+		finished = false
+	}
+
 	responseInfo := &shared.ResponseInfo{
 		Miner:            miner,
 		Success:          finished,
