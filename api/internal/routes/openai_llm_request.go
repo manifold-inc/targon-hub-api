@@ -45,6 +45,8 @@ func ProcessOpenaiRequest(cc echo.Context, endpoint string) error {
 		})
 	}
 
+	go database.SaveRequest(c.Cfg.SqlClient, c.Cfg.ReadSqlClient, res, request, c.Log)
+
 	if res.Error == "user canceled request" {
 		c.Log.Warn("user canceled request")
 		return c.JSON(500, shared.OpenAIError{
@@ -55,7 +57,6 @@ func ProcessOpenaiRequest(cc echo.Context, endpoint string) error {
 		})
 	}
 
-	go database.SaveRequest(c.Cfg.SqlClient, c.Cfg.ReadSqlClient, res, request, c.Log)
 
 	if res.Success {
 		return c.String(200, "")
