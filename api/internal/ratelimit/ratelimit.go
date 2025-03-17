@@ -28,7 +28,7 @@ const (
 
 	requestsPerSecond = 0.2
 	// Burst limit: allow this many requests in a burst (can be adjusted based on load)
-	burstSize = 5
+	burstSize = 1
 	// Window size for rate limiting (sliding window)
 	rateLimitWindow = 5 * time.Second
 
