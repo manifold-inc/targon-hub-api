@@ -12,6 +12,7 @@ import (
 	"math/rand"
 	"net"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -84,6 +85,8 @@ type MinerSuccessRates struct {
 	SuccessRateOverTime []float32 `json:"successRateOverTime"`
 	AvgSuccessRate      float32   `json:"avgSuccessRate"`
 	LastReset           time.Time `json:"lastReset"`
+	BottomTenTPS        float32   `json:"bottomTenTPS"`
+	AvgVerifiedRate     float32   `json:"avgVerifiedRate"`
 }
 
 type GlobalStats struct {
@@ -103,6 +106,7 @@ func InitMiners() {
 			CompletedOverTime:   []int{},
 			AvgSuccessRate:      1,
 			LastReset:           time.Now(),
+			AvgVerifiedRate:     1,
 		}
 	}
 }
@@ -115,6 +119,103 @@ type JugoPayload struct {
 }
 type JugoApiPayload struct {
 	Api any `json:"api"`
+}
+
+type JugoTPSResponse struct {
+	Tps_values          []float32 `json:"tps_values"`
+	Verified_percentage float32   `json:"verified_percentage"`
+}
+
+func fetchOrganicStats(public string, private string, hotkey string, logger *zap.SugaredLogger, debug bool) {
+	endpoint := "https://jugo.targon.com/organic-stats"
+
+	r, err := http.NewRequest("GET", endpoint, nil)
+	if err != nil {
+		logger.Errorw("Failed creating uid stats request", "error", err)
+		return
+	}
+
+	timestamp := time.Now().UnixMilli()
+	id := uuid.New().String()
+
+	bodyHash := sha256Hash([]byte{})
+	message := fmt.Sprintf("%s.%s.%d.%s", bodyHash, id, timestamp, "")
+	requestSignature := signMessage([]byte(message), public, private)
+
+	headers := map[string]string{
+		"Epistula-Version":           "2",
+		"Epistula-Timestamp":         fmt.Sprintf("%d", timestamp),
+		"Epistula-Uuid":              id,
+		"Epistula-Signed-By":         hotkey,
+		"Epistula-Request-Signature": requestSignature,
+		"Content-Type":               "application/json",
+	}
+
+	for key, value := range headers {
+		r.Header.Set(key, value)
+	}
+
+	r.Close = true
+	httpClient := http.Client{Timeout: 30 * time.Second}
+
+	res, err := httpClient.Do(r)
+	if err != nil {
+		logger.Errorw("Failed fetching organic stats", "error", err)
+		return
+	}
+	defer res.Body.Close()
+
+	if res.StatusCode != 200 {
+		logger.Errorw("Failed fetching organic stats", "status", res.StatusCode)
+		return
+	}
+
+	body, err := io.ReadAll(res.Body)
+	if err != nil {
+		logger.Errorw("Failed reading organic stats response", "error", err)
+		return
+	}
+
+	var statsResponse map[string]JugoTPSResponse
+	err = json.Unmarshal(body, &statsResponse)
+	if err != nil {
+		logger.Errorw("Failed unmarshaling organic stats", "error", err)
+		return
+	}
+
+	for uidStr, stats := range statsResponse {
+		uid, err := strconv.Atoi(uidStr)
+		if err != nil {
+			logger.Warnw("Invalid UID in organic response", "uid", uidStr)
+			continue
+		}
+
+		if msrm, ok := minerSuccessRatesMap[uid]; ok {
+			msrm.mu.Lock()
+			msrm.AvgVerifiedRate = stats.Verified_percentage
+			// Calculate bottom 10% TPS if we have TPS values
+			if len(stats.Tps_values) == 0 {
+				msrm.mu.Unlock()
+				continue
+			}
+			// Sort TPS values
+			sort.Slice(stats.Tps_values, func(i, j int) bool {
+				return stats.Tps_values[i] < stats.Tps_values[j]
+			})
+
+			bottomCount := max(len(stats.Tps_values)/10, 1)
+
+			var sum float32 = 0
+			for i := 0; i < bottomCount; i++ {
+				sum += stats.Tps_values[i]
+			}
+			msrm.BottomTenTPS = sum / float32(bottomCount)
+
+			msrm.mu.Unlock()
+		}
+	}
+
+	logger.Info("Successfully updated miner verified rates and TPS stats")
 }
 
 func ReportStats(public string, private string, hotkey string, logger *zap.SugaredLogger, reset bool, debug bool) {
@@ -133,6 +234,8 @@ func ReportStats(public string, private string, hotkey string, logger *zap.Sugar
 	}}})
 
 	if reset {
+		fetchOrganicStats(public, private, hotkey, logger, debug)
+
 		// Total attempted window is the same as success rate
 		globalStats.mu.Lock()
 		globalStats.AttemptedOverTime = append(globalStats.AttemptedOverTime, globalStats.AttemptedCurrent)
@@ -163,6 +266,7 @@ func ReportStats(public string, private string, hotkey string, logger *zap.Sugar
 			v.Attempted = v.InFlight
 			v.Partial = 0
 			v.LastReset = time.Now()
+
 			v.mu.Unlock()
 		}
 	}
@@ -495,6 +599,14 @@ func QueryMiner(c *shared.Context, req *shared.RequestInfo) (*shared.ResponseInf
 			if c.Cfg.Env.Debug {
 				fmt.Println(token)
 			}
+
+			token, found := strings.CutPrefix(token, "data: ")
+			if !found {
+				continue
+			}
+			if len(strings.TrimSpace(token)) < 3 {
+				break
+			}
 			fmt.Fprint(c.Response(), token+"\n\n")
 			c.Response().Flush()
 			if token == "data: [DONE]" {
@@ -502,7 +614,6 @@ func QueryMiner(c *shared.Context, req *shared.RequestInfo) (*shared.ResponseInf
 				finished = true
 				break
 			}
-			token, found := strings.CutPrefix(token, "data: ")
 			if found {
 				if tokens == 0 {
 					timeToFirstToken = int64(time.Since(start) / time.Millisecond)
