@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"math/rand"
 	"net"
 	"net/http"
 	"strconv"
@@ -285,8 +286,11 @@ func getMinerForModel(c *shared.Context, model string, specific_uid *int) (*shar
 	miners := *minerModelsMap.mmap[model].miners
 	minerModelsMap.mmap[model].mu.Unlock()
 
+        indices := rand.Perm(len(miners))
+	
+
 	var choices []randutil.Choice
-	for i := range miners {
+	for _, i := range indices {
 		if specific_uid != nil && miners[i].Uid == *specific_uid {
 			return &miners[i], nil
 		}
