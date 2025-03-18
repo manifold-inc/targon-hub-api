@@ -19,11 +19,46 @@ import (
 	"api/internal/shared"
 
 	"github.com/google/uuid"
+	"github.com/gorilla/websocket"
 	"github.com/jmcvetta/randutil"
+	"github.com/labstack/echo/v4"
 	"github.com/nitishm/go-rejson/v4"
 	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
 )
+
+type LiveChoices struct {
+	mu      sync.Mutex
+	Choices []randutil.Choice
+}
+
+type ChoiceWithJson struct {
+	Weight int `json:"weight"`
+	Uid    int `json:"uid"`
+}
+
+var liveChoices = LiveChoices{}
+
+func LiveReportWeights(ws *websocket.Conn, c echo.Context) error {
+	for {
+		if liveChoices.Choices == nil {
+			time.Sleep(1 * time.Second)
+			continue
+		}
+		liveChoices.mu.Lock()
+		array := []ChoiceWithJson{}
+		for i := range liveChoices.Choices {
+			array = append(array, ChoiceWithJson{
+				Weight: liveChoices.Choices[i].Weight,
+				Uid:    liveChoices.Choices[i].Item.(shared.Miner).Uid,
+			})
+		}
+		res, _ := json.Marshal(array)
+		liveChoices.mu.Unlock()
+		ws.WriteMessage(websocket.TextMessage, res)
+		time.Sleep(1 * time.Second)
+	}
+}
 
 type MinersForModel struct {
 	mu          sync.Mutex
@@ -259,13 +294,15 @@ func getMinerForModel(c *shared.Context, model string, specific_uid *int) (*shar
 		// Calculate weight factoring in success rate
 		uid := miners[i].Uid
 
-		minerSuccessRatesMap[uid].mu.Lock()
-		successRate := minerSuccessRatesMap[uid].AvgSuccessRate
+		msrm := minerSuccessRatesMap[uid]
+		msrm.mu.Lock()
+		successRate := msrm.AvgSuccessRate
 		liveSuccessRate := float32(1)
-		if minerSuccessRatesMap[uid].Attempted > 25 {
-			liveSuccessRate = float32(minerSuccessRatesMap[uid].Completed) / float32(minerSuccessRatesMap[uid].Attempted)
+
+		if msrm.Attempted > 10 {
+			liveSuccessRate = float32(msrm.Completed) / float32(max(msrm.Attempted-msrm.InFlight, 1))
 		}
-		minerSuccessRatesMap[uid].mu.Unlock()
+		msrm.mu.Unlock()
 
 		// scale so we have room to play with percentages
 		weight := miners[i].Weight * 100
@@ -284,6 +321,9 @@ func getMinerForModel(c *shared.Context, model string, specific_uid *int) (*shar
 		ch := randutil.Choice{Item: miners[i], Weight: weight}
 		choices = append(choices, ch)
 	}
+	liveChoices.mu.Lock()
+	liveChoices.Choices = choices
+	liveChoices.mu.Unlock()
 	if specific_uid != nil {
 		return nil, errors.New("couldnt find uid %d")
 	}

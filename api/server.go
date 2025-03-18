@@ -66,6 +66,7 @@ func main() {
 
 	// Non-rate-limited endpoints
 	e.GET("/v1/models", routes.Models)
+	e.GET("/ws/weights", routes.WebsocketWeights)
 
 	ticker := time.NewTicker(10 * time.Second)
 	defer ticker.Stop()

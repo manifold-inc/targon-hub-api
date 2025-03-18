@@ -2,14 +2,33 @@ package routes
 
 import (
 	"fmt"
+	"net/http"
 	"time"
 
 	"api/internal/bittensor"
 	"api/internal/database"
 	"api/internal/shared"
 
+	"github.com/gorilla/websocket"
 	"github.com/labstack/echo/v4"
 )
+
+var upgrader = websocket.Upgrader{
+	CheckOrigin: func(r *http.Request) bool {
+		origin := r.Header.Get("Origin")
+		return origin == "http://localhost:3000" || origin == "https://stats.targon.com"
+	},
+}
+
+func WebsocketWeights(c echo.Context) error {
+	ws, err := upgrader.Upgrade(c.Response(), c.Request(), nil)
+	if err != nil {
+		return err
+	}
+	defer ws.Close()
+
+	return bittensor.LiveReportWeights(ws, c)
+}
 
 func ChatRequest(c echo.Context) error {
 	return ProcessOpenaiRequest(c, shared.ENDPOINTS.CHAT)
@@ -56,7 +75,6 @@ func ProcessOpenaiRequest(cc echo.Context, endpoint string) error {
 			Code:    400,
 		})
 	}
-
 
 	if res.Success {
 		return c.String(200, "")
