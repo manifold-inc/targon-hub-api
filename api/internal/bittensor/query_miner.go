@@ -215,11 +215,13 @@ func fetchOrganicStats(public string, private string, hotkey string, logger *zap
 						return tpsFloats[i] < tpsFloats[j]
 					})
 
-					// Calculate the bottom 10% mark
-					bottomIndex := max(len(tpsFloats)/10, 1)
-					if bottomIndex > 0 && bottomIndex <= len(tpsFloats) {
-						msrm.BottomTenTPS = tpsFloats[bottomIndex-1]
+					bottomCount := max(len(tpsFloats)/10, 1)
+
+					var sum float32 = 0
+					for i := 0; i < bottomCount; i++ {
+						sum += tpsFloats[i]
 					}
+					msrm.BottomTenTPS = sum / float32(bottomCount)
 				}
 			}
 			
