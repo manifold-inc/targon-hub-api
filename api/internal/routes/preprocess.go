@@ -97,6 +97,15 @@ func preprocessOpenaiRequest(
 		payload["max_tokens"] = 512
 	}
 
+	// Enforce a minimum of 50 tokens for chargeable users
+	if chargeable {
+		// Get the max_tokens value
+		if maxTokens, ok := payload["max_tokens"].(float64); ok && maxTokens < 50 {
+			// Set it to 50 if it's below that
+			payload["max_tokens"] = float64(50)
+		}
+	}
+
 	payload["stream_options"] = map[string]any{
 		"include_usage": true,
 	}

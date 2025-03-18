@@ -17,6 +17,7 @@ import (
 	"sync"
 	"time"
 
+	"api/internal/ratelimit"
 	"api/internal/shared"
 
 	"github.com/google/uuid"
@@ -548,6 +549,12 @@ func QueryMiner(c *shared.Context, req *shared.RequestInfo) (*shared.ResponseInf
 		select {
 		// If user cancelled request, we remove it from the attempted
 		case <-c.Request().Context().Done():
+			// Track cancellation for behavior monitoring
+			ratelimit.TrackCancellation(context.Background(), c.Cfg.RedisClient, req.UserId, c.Log)
+
+			c.Log.Warnw("Request canceled by client",
+				"user_id", req.UserId)
+
 			minerSuccessRatesMap[miner.Uid].mu.Lock()
 			minerSuccessRatesMap[miner.Uid].Attempted = max(minerSuccessRatesMap[miner.Uid].Attempted-1, 0)
 			minerSuccessRatesMap[miner.Uid].mu.Unlock()

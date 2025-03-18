@@ -34,6 +34,12 @@ const (
 
 	// Redis key prefix for rate limiting
 	rateLimitKeyPrefix = "ratelimit:"
+
+	CancelKeyPrefix = "cancel:user:"
+	// Number of cancellations before rejecting requests
+	CancelThreshold = 10
+	// How long to track cancellations - extended to 6 hours
+	CancelTTL = 6 * time.Hour
 )
 
 // RateLimitResult represents the result of a rate limit check
@@ -329,4 +335,154 @@ func ConfigureRateLimiter(readDb *sql.DB, redisClient *redis.Client) echo.Middle
 	}
 
 	return middleware.RateLimiterWithConfig(config)
+}
+
+// IsUserChargeable checks if a user is chargeable, using Redis as a cache
+func IsUserChargeable(ctx context.Context, redisClient *redis.Client, readDb *sql.DB, userId int, logger *zap.SugaredLogger) (bool, error) {
+	chargeableKey := fmt.Sprintf("user:chargeable:%d", userId)
+
+	// Try to get from cache first
+	val, err := redisClient.Get(ctx, chargeableKey).Result()
+	if err == nil {
+		return val == "1", nil
+	}
+
+	// Handle Redis errors other than key not found
+	if err != redis.Nil && logger != nil {
+		logger.Warnw("Redis error when checking user chargeable status", "error", err, "user_id", userId)
+	}
+
+	// Query the database
+	queryCtx, cancel := context.WithTimeout(ctx, 500*time.Millisecond)
+	defer cancel()
+
+	var chargeable bool
+	err = readDb.QueryRowContext(queryCtx, "SELECT chargeable FROM user WHERE id = ?", userId).Scan(&chargeable)
+
+	// Handle database errors
+	if err == sql.ErrNoRows {
+		// Cache the non-chargeable status
+		if setErr := redisClient.Set(ctx, chargeableKey, "0", chargeableTTL).Err(); setErr != nil && logger != nil {
+			logger.Warnw("Failed to cache non-chargeable status", "error", setErr, "user_id", userId)
+		}
+		return false, nil
+	}
+
+	if err != nil {
+		return false, err
+	}
+
+	// Cache the result
+	cacheValue := "0"
+	if chargeable {
+		cacheValue = "1"
+	}
+
+	if setErr := redisClient.Set(ctx, chargeableKey, cacheValue, chargeableTTL).Err(); setErr != nil && logger != nil {
+		logger.Warnw("Failed to cache chargeable status", "error", setErr, "user_id", userId)
+	}
+
+	return chargeable, nil
+}
+
+func CancellationPatternBlocker(redisClient *redis.Client, readDb *sql.DB) echo.MiddlewareFunc {
+	return func(next echo.HandlerFunc) echo.HandlerFunc {
+		return func(c echo.Context) error {
+			cc, ok := c.(*shared.Context)
+			if !ok {
+				return next(c)
+			}
+
+			apiKey, err := ExtractApiKey(c)
+			if err != nil {
+				return next(c)
+			}
+
+			var userId int
+			err = readDb.QueryRow("SELECT user_id FROM api_key WHERE id = ?", apiKey).Scan(&userId)
+			if err != nil {
+				cc.Log.Warnw("Failed to get user ID from API key", "error", err, "apiKey", apiKey)
+				return next(c)
+			}
+
+			// Check if the user is chargeable
+			chargeable, err := IsUserChargeable(c.Request().Context(), redisClient, readDb, userId, cc.Log)
+			if err != nil {
+				cc.Log.Warnw("Error checking if user is chargeable", "error", err, "user_id", userId)
+				return next(c)
+			}
+
+			// Skip non-chargeable users
+			if !chargeable {
+				return next(c)
+			}
+
+			// Check cancellation count
+			cancelKey := fmt.Sprintf("%s%d", CancelKeyPrefix, userId)
+			count, err := redisClient.Get(c.Request().Context(), cancelKey).Int64()
+			if err != nil && err != redis.Nil {
+				cc.Log.Warnw("Error checking cancellation count", "error", err, "user_id", userId)
+				return next(c)
+			}
+
+			// If user has exceeded cancellation threshold, reject the request
+			if count >= CancelThreshold {
+				cc.Log.Warnw("Rejecting request due to excessive cancellations",
+					"user_id", userId,
+					"cancellation_count", count)
+
+				// Return 429 Too Many Requests
+				return c.JSON(http.StatusTooManyRequests, shared.OpenAIError{
+					Message: "Too many canceled requests detected. Please try again later.",
+					Object:  "error",
+					Type:    "requests_limit_exceeded",
+					Code:    http.StatusTooManyRequests,
+				})
+			}
+
+			return next(c)
+		}
+	}
+}
+
+// TrackCancellation records a cancellation for a user
+func TrackCancellation(ctx context.Context, redisClient *redis.Client, userId int, logger *zap.SugaredLogger) {
+	// First check if this user is chargeable
+	chargeableKey := fmt.Sprintf("user:chargeable:%d", userId)
+
+	// Try to get from cache first
+	val, err := redisClient.Get(ctx, chargeableKey).Result()
+	if err == nil {
+		// If we have a cached result and user is not chargeable, don't track cancellation
+		if val == "0" {
+			return
+		}
+	} else if err != redis.Nil && logger != nil {
+		logger.Warnw("Redis error when checking user chargeable status", "error", err, "user_id", userId)
+		// still continue with tracking cancellation even if we can't check chargeable status
+	}
+
+	cancelKey := fmt.Sprintf("%s%d", CancelKeyPrefix, userId)
+
+	// Increment cancel count
+	countCmd := redisClient.Incr(ctx, cancelKey)
+	if countCmd.Err() != nil {
+		if logger != nil {
+			logger.Warnw("Failed to increment cancellation counter", "error", countCmd.Err(), "user_id", userId)
+		}
+		return
+	}
+
+	expireCmd := redisClient.Expire(ctx, cancelKey, CancelTTL)
+	if expireCmd.Err() != nil && logger != nil {
+		logger.Warnw("Failed to set expiry on cancellation counter", "error", expireCmd.Err(), "user_id", userId)
+	}
+
+	count, _ := countCmd.Result()
+	if logger != nil && count >= CancelThreshold-2 {
+		logger.Warnw("User approaching cancellation threshold",
+			"user_id", userId,
+			"cancellation_count", count,
+			"threshold", CancelThreshold)
+	}
 }
