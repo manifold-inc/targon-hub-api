@@ -64,6 +64,10 @@ func preprocessOpenaiRequest(
 		return nil, &shared.RequestError{StatusCode: 500, Err: errors.New("internal server error")}
 	}
 
+	if chargeable {
+		return nil, &shared.RequestError{StatusCode: 401, Err: errors.New("unauthorized")}
+	}
+
 	// add user id to future logs
 	c.Log = c.Log.With("user_id", userid)
 
