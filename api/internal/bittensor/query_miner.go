@@ -127,11 +127,6 @@ type JugoTPSResponse struct {
 }
 
 func fetchOrganicStats(public string, private string, hotkey string, logger *zap.SugaredLogger, debug bool) {
-	if debug {
-		logger.Warn("skipping organic stats fetch since debug")
-		return
-	}
-
 	endpoint := "https://jugo.targon.com/organic-stats"
 
 	r, err := http.NewRequest("GET", endpoint, nil)
@@ -271,6 +266,7 @@ func ReportStats(public string, private string, hotkey string, logger *zap.Sugar
 			v.Attempted = v.InFlight
 			v.Partial = 0
 			v.LastReset = time.Now()
+
 			v.mu.Unlock()
 		}
 	}
@@ -603,6 +599,14 @@ func QueryMiner(c *shared.Context, req *shared.RequestInfo) (*shared.ResponseInf
 			if c.Cfg.Env.Debug {
 				fmt.Println(token)
 			}
+
+			token, found := strings.CutPrefix(token, "data: ")
+			if !found {
+				continue
+			}
+			if len(strings.TrimSpace(token)) < 3 {
+				break
+			}
 			fmt.Fprint(c.Response(), token+"\n\n")
 			c.Response().Flush()
 			if token == "data: [DONE]" {
@@ -610,7 +614,6 @@ func QueryMiner(c *shared.Context, req *shared.RequestInfo) (*shared.ResponseInf
 				finished = true
 				break
 			}
-			token, found := strings.CutPrefix(token, "data: ")
 			if found {
 				if tokens == 0 {
 					timeToFirstToken = int64(time.Since(start) / time.Millisecond)
