@@ -34,6 +34,11 @@ const (
 
 	// Redis key prefix for rate limiting
 	rateLimitKeyPrefix = "ratelimit:"
+
+	// Cancellation tracking - exported constants
+	CancelKeyPrefix = "cancel:user:"
+	CancelThreshold = 10            // Number of cancellations before rejecting requests
+	CancelTTL       = 6 * time.Hour // How long to track cancellations - extended to 6 hours
 )
 
 // RateLimitResult represents the result of a rate limit check
@@ -329,4 +334,84 @@ func ConfigureRateLimiter(readDb *sql.DB, redisClient *redis.Client) echo.Middle
 	}
 
 	return middleware.RateLimiterWithConfig(config)
+}
+
+// CancellationPatternBlocker middleware blocks requests from users with excessive cancellations
+func CancellationPatternBlocker(redisClient *redis.Client, readDb *sql.DB) echo.MiddlewareFunc {
+	return func(next echo.HandlerFunc) echo.HandlerFunc {
+		return func(c echo.Context) error {
+			cc, ok := c.(*shared.Context)
+			if !ok {
+				return next(c)
+			}
+
+			// Extract user ID from authorization
+			apiKey, err := ExtractApiKey(c)
+			if err != nil {
+				return next(c) // Continue if we can't extract API key
+			}
+
+			// Get user ID from API key
+			var userId int
+			err = readDb.QueryRow("SELECT user_id FROM api_key WHERE id = ?", apiKey).Scan(&userId)
+			if err != nil {
+				cc.Log.Warnw("Failed to get user ID from API key", "error", err, "apiKey", apiKey)
+				return next(c) // Continue if we can't get user ID
+			}
+
+			// Check cancellation count
+			cancelKey := fmt.Sprintf("%s%d", CancelKeyPrefix, userId)
+			count, err := redisClient.Get(c.Request().Context(), cancelKey).Int64()
+			if err != nil && err != redis.Nil {
+				cc.Log.Warnw("Error checking cancellation count", "error", err, "user_id", userId)
+				return next(c) // Continue on error
+			}
+
+			// If user has exceeded cancellation threshold, reject the request
+			if count >= CancelThreshold {
+				cc.Log.Warnw("Rejecting request due to excessive cancellations",
+					"user_id", userId,
+					"cancellation_count", count)
+
+				// Return 429 Too Many Requests
+				return c.JSON(http.StatusTooManyRequests, shared.OpenAIError{
+					Message: "Too many canceled requests detected. Please try again later.",
+					Object:  "error",
+					Type:    "requests_limit_exceeded",
+					Code:    http.StatusTooManyRequests,
+				})
+			}
+
+			return next(c)
+		}
+	}
+}
+
+// TrackCancellation records a cancellation for a user
+func TrackCancellation(ctx context.Context, redisClient *redis.Client, userId int, logger *zap.SugaredLogger) {
+	cancelKey := fmt.Sprintf("%s%d", CancelKeyPrefix, userId)
+
+	// Increment cancel count
+	countCmd := redisClient.Incr(ctx, cancelKey)
+	if countCmd.Err() != nil {
+		if logger != nil {
+			logger.Warnw("Failed to increment cancellation counter", "error", countCmd.Err(), "user_id", userId)
+		}
+		return
+	}
+
+	// Set expiry (reset after the TTL)
+	expireCmd := redisClient.Expire(ctx, cancelKey, CancelTTL)
+	if expireCmd.Err() != nil && logger != nil {
+		logger.Warnw("Failed to set expiry on cancellation counter", "error", expireCmd.Err(), "user_id", userId)
+	}
+
+	// Log when we're approaching the threshold
+	count, _ := countCmd.Result()
+	if logger != nil && count >= CancelThreshold-2 {
+		logger.Warnw("User approaching cancellation threshold",
+			"user_id", userId,
+			"cancellation_count", count,
+			"threshold", CancelThreshold)
+	}
 }

@@ -3,6 +3,7 @@ package routes
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -12,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"api/internal/ratelimit"
 	"api/internal/shared"
 )
 
@@ -80,6 +82,12 @@ scanner:
 	for reader.Scan() {
 		select {
 		case <-c.Request().Context().Done():
+			// Track cancellation in fallback route
+			ratelimit.TrackCancellation(context.Background(), c.Cfg.RedisClient, req.UserId, c.Log)
+
+			c.Log.Warnw("Request canceled by client during fallback",
+				"user_id", req.UserId)
+
 			return &shared.RequestError{StatusCode: 400, Err: errors.New("request canceled")}
 		default:
 			token := reader.Text()

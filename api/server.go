@@ -58,6 +58,11 @@ func main() {
 
 	// Create a group for rate-limited endpoints
 	rateLimitedGroup := e.Group("")
+
+	// Apply cancellation pattern blocker middleware
+	rateLimitedGroup.Use(ratelimit.CancellationPatternBlocker(cfg.RedisClient, cfg.ReadSqlClient))
+
+	// Apply rate limiting to endpoints
 	rateLimitedGroup.Use(ratelimit.ConfigureRateLimiter(cfg.ReadSqlClient, cfg.RedisClient))
 
 	// Apply rate limiting to chat and completions endpoints
