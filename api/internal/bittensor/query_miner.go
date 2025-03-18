@@ -85,7 +85,7 @@ type MinerSuccessRates struct {
 	SuccessRateOverTime []float32 `json:"successRateOverTime"`
 	AvgSuccessRate      float32   `json:"avgSuccessRate"`
 	LastReset           time.Time `json:"lastReset"`
-	BottomTenTPS        float32   `json:"bottomTenTPS"`
+	SlowestQuintileTPS  float32   `json:"slowestQuintileTPS"`
 	AvgVerifiedRate     float32   `json:"avgVerifiedRate"`
 }
 
@@ -192,8 +192,8 @@ func fetchOrganicStats(public string, private string, hotkey string, logger *zap
 
 		if msrm, ok := minerSuccessRatesMap[uid]; ok {
 			msrm.mu.Lock()
-			msrm.AvgVerifiedRate = stats.Verified_percentage
-			// Calculate bottom 10% TPS if we have TPS values
+			msrm.AvgVerifiedRate = float32(stats.Verified_percentage / 100.0)
+			// Calculate bottom 20% TPS if we have TPS values
 			if len(stats.Tps_values) == 0 {
 				msrm.mu.Unlock()
 				continue
@@ -203,13 +203,13 @@ func fetchOrganicStats(public string, private string, hotkey string, logger *zap
 				return stats.Tps_values[i] < stats.Tps_values[j]
 			})
 
-			bottomCount := max(len(stats.Tps_values)/10, 1)
+			bottomCount := max(len(stats.Tps_values)/5, 1)
 
 			var sum float32 = 0
 			for i := 0; i < bottomCount; i++ {
 				sum += stats.Tps_values[i]
 			}
-			msrm.BottomTenTPS = sum / float32(bottomCount)
+			msrm.SlowestQuintileTPS = sum / float32(bottomCount)
 
 			msrm.mu.Unlock()
 		}
@@ -406,6 +406,11 @@ func getMinerForModel(c *shared.Context, model string, specific_uid *int) (*shar
 		msrm := minerSuccessRatesMap[uid]
 		msrm.mu.Lock()
 		successRate := msrm.AvgSuccessRate
+		verifiedRate := msrm.AvgVerifiedRate
+		tpsModifier := float32(1)
+		if msrm.SlowestQuintileTPS > 0 {
+			tpsModifier = min(msrm.SlowestQuintileTPS/100.0, 1.0) // no penalty if your worst 20% is > 100 TPS, can be scaled as subnet improves, ATM no one achieves this
+		}
 		liveSuccessRate := float32(1)
 
 		if msrm.Attempted > 10 {
@@ -415,7 +420,7 @@ func getMinerForModel(c *shared.Context, model string, specific_uid *int) (*shar
 
 		// scale so we have room to play with percentages
 		weight := miners[i].Weight * 100
-		weight = max(int(float32(weight)*successRate*liveSuccessRate), 0)
+		weight = max(int(float32(weight)*successRate*liveSuccessRate*verifiedRate*tpsModifier), 0)
 
 		// Still need to give these miners a chance to re-gain trust, so cant fully zero
 		if successRate < .50 || liveSuccessRate < .5 {
