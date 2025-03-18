@@ -197,7 +197,7 @@ func fetchOrganicStats(public string, private string, hotkey string, logger *zap
 			msrm.mu.Lock()
 			
 			if verifiedPct, ok := stats["verified_percentage"].(float64); ok {
-				msrm.AvgVerifiedRate = float32(verifiedPct / 100.0)
+				msrm.AvgVerifiedRate = verifiedPct
 			}
 
 			// Calculate bottom 10% TPS if we have TPS values
