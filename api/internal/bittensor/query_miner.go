@@ -12,6 +12,7 @@ import (
 	"math/rand"
 	"net"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -27,7 +28,6 @@ import (
 	"github.com/nitishm/go-rejson/v4"
 	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
-	"golang.org/x/exp/slices"
 )
 
 type LiveChoices struct {
@@ -204,7 +204,7 @@ func fetchOrganicStats(public string, private string, hotkey string, logger *zap
 				continue
 			}
 			// Sort TPS values
-			slices.Sort(stats.Tps_values, func(i, j int) bool {
+			sort.Slice(stats.Tps_values, func(i, j int) bool {
 				return stats.Tps_values[i] < stats.Tps_values[j]
 			})
 
