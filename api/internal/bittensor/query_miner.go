@@ -16,7 +16,7 @@ import (
 	"strings"
 	"sync"
 	"time"
-
+	"sort"
 	"api/internal/ratelimit"
 	"api/internal/shared"
 
@@ -83,7 +83,9 @@ type MinerSuccessRates struct {
 	InFlight            int       `json:"inFlight"`
 	SuccessRateOverTime []float32 `json:"successRateOverTime"`
 	AvgSuccessRate      float32   `json:"avgSuccessRate"`
-	LastReset           time.Time `json:"lastReset"`
+	LastReset           time.Time `json:"lastReset"`,
+	BottomTenTPS        float32   `json:"bottomTenTPS"`
+	AvgVerifiedRate     float32   `json:"avgVerifiedRate"`
 }
 
 type GlobalStats struct {
@@ -103,6 +105,7 @@ func InitMiners() {
 			CompletedOverTime:   []int{},
 			AvgSuccessRate:      1,
 			LastReset:           time.Now(),
+			AvgVerifiedRate:     1
 		}
 	}
 }
@@ -115,6 +118,116 @@ type JugoPayload struct {
 }
 type JugoApiPayload struct {
 	Api any `json:"api"`
+}
+
+func fetchOrganicStats(public string, private string, hotkey string, logger *zap.SugaredLogger, debug bool) {
+	if debug {
+		logger.Warn("skipping organic stats fetch since debug")
+		return
+	}
+
+	endpoint := "https://jugo.targon.com/organic-stats"
+	
+	r, err := http.NewRequest("GET", endpoint, nil)
+	if err != nil {
+		logger.Errorw("Failed creating uid stats request", "error", err)
+		return
+	}
+
+	timestamp := time.Now().UnixMilli()
+	id := uuid.New().String()
+
+	bodyHash := sha256Hash([]byte{})
+	message := fmt.Sprintf("%s.%s.%d.%s", bodyHash, id, timestamp, "")
+	requestSignature := signMessage([]byte(message), public, private)
+
+	headers := map[string]string{
+		"Epistula-Version":           "2",
+		"Epistula-Timestamp":         fmt.Sprintf("%d", timestamp),
+		"Epistula-Uuid":              id,
+		"Epistula-Signed-By":         hotkey,
+		"Epistula-Request-Signature": requestSignature,
+		"Content-Type":               "application/json",
+	}
+	
+	for key, value := range headers {
+		r.Header.Set(key, value)
+	}
+	
+	r.Close = true
+	httpClient := http.Client{Timeout: 30 * time.Second}
+	
+	res, err := httpClient.Do(r)
+	if err != nil {
+		logger.Errorw("Failed fetching organic stats", "error", err)
+		return
+	}
+	defer res.Body.Close()
+	
+	if res.StatusCode != 200 {
+		logger.Errorw("Failed fetching organic stats", "status", res.StatusCode)
+		return
+	}
+
+	body, err := io.ReadAll(res.Body)
+	if err != nil {
+		logger.Errorw("Failed reading organic stats response", "error", err)
+		return
+	}
+
+	var statsResponse map[string]map[string]interface{}
+	err = json.Unmarshal(body, &statsResponse)
+	if err != nil {
+		logger.Errorw("Failed unmarshaling organic stats", "error", err)
+		return
+	}
+
+	for uidStr, stats := range statsResponse {
+		uid, err := strconv.Atoi(uidStr)
+		if err != nil {
+			logger.Warnw("Invalid UID in organic response", "uid", uidStr)
+			continue
+		}
+
+		if uid < 0 || uid > 255 {
+			continue
+		}
+
+		if msrm, ok := minerSuccessRatesMap[uid]; ok {
+			msrm.mu.Lock()
+			
+			if verifiedPct, ok := stats["verified_percentage"].(float64); ok {
+				msrm.AvgVerifiedRate = float32(verifiedPct / 100.0)
+			}
+
+			// Calculate bottom 10% TPS if we have TPS values
+			if tpsValues, ok := stats["tps_values"].([]interface{}); ok && len(tpsValues) > 0 {
+				tpsFloats := make([]float32, 0, len(tpsValues))
+				for _, v := range tpsValues {
+					if f, ok := v.(float64); ok {
+						tpsFloats = append(tpsFloats, float32(f))
+					}
+				}
+
+				if len(tpsFloats) > 0 {
+					// Sort TPS values
+					sort.Slice(tpsFloats, func(i, j int) bool {
+						return tpsFloats[i] < tpsFloats[j]
+					})
+
+					// Calculate the bottom 10% mark
+					bottomIndex := max(len(tpsFloats)/10, 1)
+					if bottomIndex > 0 && bottomIndex <= len(tpsFloats) {
+						msrm.BottomTenTPS = tpsFloats[bottomIndex-1]
+					}
+				}
+			}
+			
+			msrm.mu.Unlock()
+		}
+	}
+
+	logger.Info("Successfully updated miner verified rates and TPS stats")
 }
 
 func ReportStats(public string, private string, hotkey string, logger *zap.SugaredLogger, reset bool, debug bool) {
@@ -133,6 +246,8 @@ func ReportStats(public string, private string, hotkey string, logger *zap.Sugar
 	}}})
 
 	if reset {
+		fetchOrganicStats(public, private, hotkey, logger, debug)
+		
 		// Total attempted window is the same as success rate
 		globalStats.mu.Lock()
 		globalStats.AttemptedOverTime = append(globalStats.AttemptedOverTime, globalStats.AttemptedCurrent)
