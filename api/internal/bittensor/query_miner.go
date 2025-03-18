@@ -192,7 +192,7 @@ func fetchOrganicStats(public string, private string, hotkey string, logger *zap
 
 		if msrm, ok := minerSuccessRatesMap[uid]; ok {
 			msrm.mu.Lock()
-			msrm.AvgVerifiedRate = float32(stats.Verified_percentage / 100.0)
+			msrm.AvgVerifiedRate = min(float32(stats.Verified_percentage) / 100.0, 1.0)
 			// Calculate bottom 20% TPS if we have TPS values
 			if len(stats.Tps_values) == 0 {
 				msrm.mu.Unlock()
