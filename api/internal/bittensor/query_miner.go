@@ -48,12 +48,13 @@ func LiveReportWeights(ws *websocket.Conn, c echo.Context) error {
 			continue
 		}
 		liveChoices.mu.Lock()
-		array := []ChoiceWithJson{}
+		array := [256]ChoiceWithJson{}
 		for i := range liveChoices.Choices {
-			array = append(array, ChoiceWithJson{
+			uid := liveChoices.Choices[i].Item.(shared.Miner).Uid
+			array[uid] = ChoiceWithJson{
 				Weight: liveChoices.Choices[i].Weight,
-				Uid:    liveChoices.Choices[i].Item.(shared.Miner).Uid,
-			})
+				Uid:    uid,
+			}
 		}
 		res, _ := json.Marshal(array)
 		liveChoices.mu.Unlock()
@@ -287,8 +288,7 @@ func getMinerForModel(c *shared.Context, model string, specific_uid *int) (*shar
 	miners := *minerModelsMap.mmap[model].miners
 	minerModelsMap.mmap[model].mu.Unlock()
 
-        indices := rand.Perm(len(miners))
-	
+	indices := rand.Perm(len(miners))
 
 	var choices []randutil.Choice
 	for _, i := range indices {
