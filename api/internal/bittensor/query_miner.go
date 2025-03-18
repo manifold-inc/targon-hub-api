@@ -16,7 +16,7 @@ import (
 	"strings"
 	"sync"
 	"time"
-	"sort"
+
 	"api/internal/ratelimit"
 	"api/internal/shared"
 
@@ -27,6 +27,7 @@ import (
 	"github.com/nitishm/go-rejson/v4"
 	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
+	"golang.org/x/exp/slices"
 )
 
 type LiveChoices struct {
@@ -83,7 +84,7 @@ type MinerSuccessRates struct {
 	InFlight            int       `json:"inFlight"`
 	SuccessRateOverTime []float32 `json:"successRateOverTime"`
 	AvgSuccessRate      float32   `json:"avgSuccessRate"`
-	LastReset           time.Time `json:"lastReset"`,
+	LastReset           time.Time `json:"lastReset"`
 	BottomTenTPS        float32   `json:"bottomTenTPS"`
 	AvgVerifiedRate     float32   `json:"avgVerifiedRate"`
 }
@@ -105,7 +106,7 @@ func InitMiners() {
 			CompletedOverTime:   []int{},
 			AvgSuccessRate:      1,
 			LastReset:           time.Now(),
-			AvgVerifiedRate:     1
+			AvgVerifiedRate:     1,
 		}
 	}
 }
@@ -120,6 +121,11 @@ type JugoApiPayload struct {
 	Api any `json:"api"`
 }
 
+type JugoTPSResponse struct {
+	Tps_values          []float32 `json:"tps_values"`
+	Verified_percentage float32   `json:"verified_percentage"`
+}
+
 func fetchOrganicStats(public string, private string, hotkey string, logger *zap.SugaredLogger, debug bool) {
 	if debug {
 		logger.Warn("skipping organic stats fetch since debug")
@@ -127,7 +133,7 @@ func fetchOrganicStats(public string, private string, hotkey string, logger *zap
 	}
 
 	endpoint := "https://jugo.targon.com/organic-stats"
-	
+
 	r, err := http.NewRequest("GET", endpoint, nil)
 	if err != nil {
 		logger.Errorw("Failed creating uid stats request", "error", err)
@@ -149,21 +155,21 @@ func fetchOrganicStats(public string, private string, hotkey string, logger *zap
 		"Epistula-Request-Signature": requestSignature,
 		"Content-Type":               "application/json",
 	}
-	
+
 	for key, value := range headers {
 		r.Header.Set(key, value)
 	}
-	
+
 	r.Close = true
 	httpClient := http.Client{Timeout: 30 * time.Second}
-	
+
 	res, err := httpClient.Do(r)
 	if err != nil {
 		logger.Errorw("Failed fetching organic stats", "error", err)
 		return
 	}
 	defer res.Body.Close()
-	
+
 	if res.StatusCode != 200 {
 		logger.Errorw("Failed fetching organic stats", "status", res.StatusCode)
 		return
@@ -175,7 +181,7 @@ func fetchOrganicStats(public string, private string, hotkey string, logger *zap
 		return
 	}
 
-	var statsResponse map[string]map[string]interface{}
+	var statsResponse map[string]JugoTPSResponse
 	err = json.Unmarshal(body, &statsResponse)
 	if err != nil {
 		logger.Errorw("Failed unmarshaling organic stats", "error", err)
@@ -189,42 +195,27 @@ func fetchOrganicStats(public string, private string, hotkey string, logger *zap
 			continue
 		}
 
-		if uid < 0 || uid > 255 {
-			continue
-		}
-
 		if msrm, ok := minerSuccessRatesMap[uid]; ok {
 			msrm.mu.Lock()
-			
-			if verifiedPct, ok := stats["verified_percentage"].(float64); ok {
-				msrm.AvgVerifiedRate = verifiedPct
-			}
-
+			msrm.AvgVerifiedRate = stats.Verified_percentage
 			// Calculate bottom 10% TPS if we have TPS values
-			if tpsValues, ok := stats["tps_values"].([]interface{}); ok && len(tpsValues) > 0 {
-				tpsFloats := make([]float32, 0, len(tpsValues))
-				for _, v := range tpsValues {
-					if f, ok := v.(float64); ok {
-						tpsFloats = append(tpsFloats, float32(f))
-					}
-				}
-
-				if len(tpsFloats) > 0 {
-					// Sort TPS values
-					sort.Slice(tpsFloats, func(i, j int) bool {
-						return tpsFloats[i] < tpsFloats[j]
-					})
-
-					bottomCount := max(len(tpsFloats)/10, 1)
-
-					var sum float32 = 0
-					for i := 0; i < bottomCount; i++ {
-						sum += tpsFloats[i]
-					}
-					msrm.BottomTenTPS = sum / float32(bottomCount)
-				}
+			if len(stats.Tps_values) == 0 {
+				msrm.mu.Unlock()
+				continue
 			}
-			
+			// Sort TPS values
+			slices.Sort(stats.Tps_values, func(i, j int) bool {
+				return stats.Tps_values[i] < stats.Tps_values[j]
+			})
+
+			bottomCount := max(len(stats.Tps_values)/10, 1)
+
+			var sum float32 = 0
+			for i := 0; i < bottomCount; i++ {
+				sum += stats.Tps_values[i]
+			}
+			msrm.BottomTenTPS = sum / float32(bottomCount)
+
 			msrm.mu.Unlock()
 		}
 	}
@@ -249,7 +240,7 @@ func ReportStats(public string, private string, hotkey string, logger *zap.Sugar
 
 	if reset {
 		fetchOrganicStats(public, private, hotkey, logger, debug)
-		
+
 		// Total attempted window is the same as success rate
 		globalStats.mu.Lock()
 		globalStats.AttemptedOverTime = append(globalStats.AttemptedOverTime, globalStats.AttemptedCurrent)
