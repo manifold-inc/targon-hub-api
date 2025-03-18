@@ -113,7 +113,7 @@ async def sync_miners():
                 "hotkey": axon.hotkey,
                 "coldkey": axon.coldkey,
                 "uid": uid,
-                "weight": qps,
+                "weight": min(1000, qps),
             }
             logger.info(redis_miner_data)
             if miner_models.get(model) is None:
