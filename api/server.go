@@ -1,7 +1,6 @@
 package main
 
 import (
-	"strings"
 	"time"
 
 	"api/internal/bittensor"
@@ -56,35 +55,6 @@ func main() {
 			return c.String(500, "Internal Server Error")
 		},
 	}))
-
-	//  validation middleware to block malformed tokens
-	e.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
-		return func(c echo.Context) error {
-			path := c.Request().URL.Path
-			if path != "/v1/chat/completions" && path != "/v1/completions" {
-				return next(c)
-			}
-
-			auth := c.Request().Header.Get("Authorization")
-			if auth != "" {
-				parts := strings.Split(auth, " ")
-				if len(parts) < 2 || strings.ToLower(parts[0]) != "bearer" {
-					cc, ok := c.(*shared.Context)
-					if ok {
-						cc.Log.Warnw("Malformed bearer token", "token", auth)
-					}
-					return c.JSON(401, shared.OpenAIError{
-						Message: "invalid authentication",
-						Object:  "error",
-						Type:    "unauthorized",
-						Code:    401,
-					})
-				}
-			}
-
-			return next(c)
-		}
-	})
 
 	// Create a group for rate-limited endpoints
 	rateLimitedGroup := e.Group("")

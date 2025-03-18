@@ -25,7 +25,27 @@ func preprocessOpenaiRequest(
 	c.Response().Header().Set("X-Accel-Buffering", "no")
 	c.Response().Header().Set("Content-Type", "text/event-stream; charset=utf-8")
 	c.Request().Header.Add("Content-Type", "application/json")
+
+	// Get and validate bearer token
 	bearer := c.Request().Header.Get("Authorization")
+	if bearer == "" {
+		c.Log.Warn("Missing Authorization header")
+		return nil, &shared.RequestError{StatusCode: 401, Err: errors.New("unauthorized")}
+	}
+
+	// Validate token format
+	parts := strings.Split(bearer, " ")
+	if len(parts) < 2 || strings.ToLower(parts[0]) != "bearer" {
+		c.Log.Warnw("Malformed bearer token", "token", bearer)
+		return nil, &shared.RequestError{StatusCode: 401, Err: errors.New("invalid authentication")}
+	}
+
+	apiKey := parts[1]
+
+	if len(apiKey) != 32 {
+		c.Log.Warnw("Invalid API key length", "length", len(apiKey))
+		return nil, &shared.RequestError{StatusCode: 401, Err: errors.New("invalid authentication")}
+	}
 
 	// Get user object
 	var (
@@ -33,7 +53,7 @@ func preprocessOpenaiRequest(
 		userid     int
 		chargeable bool
 	)
-	err := c.Cfg.ReadSqlClient.QueryRow("SELECT user.credits, user.id, user.chargeable FROM user INNER JOIN api_key ON user.id = api_key.user_id WHERE api_key.id = ?", strings.Split(bearer, " ")[1]).
+	err := c.Cfg.ReadSqlClient.QueryRow("SELECT user.credits, user.id, user.chargeable FROM user INNER JOIN api_key ON user.id = api_key.user_id WHERE api_key.id = ?", apiKey).
 		Scan(&credits, &userid, &chargeable)
 	if err == sql.ErrNoRows && !c.Cfg.Env.Debug {
 		c.Log.Warnf("no user found for bearer token %s", bearer)
