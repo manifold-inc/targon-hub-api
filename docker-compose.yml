@@ -12,7 +12,6 @@ services:
       context: ./vram-estimator
       platforms: 
       - linux/amd64
-      - linux/arm64
   api:
     image: manifoldlabs/targon-hub-api:${VERSION:-latest}
     labels:
@@ -27,7 +26,6 @@ services:
       context: ./api
       platforms: 
       - linux/amd64
-      - linux/arm64
     restart: always
     depends_on:
       cache:
@@ -40,7 +38,6 @@ services:
       context: ./miner-cache
       platforms: 
       - linux/amd64
-      - linux/arm64
     restart: always
     depends_on:
       cache:
