@@ -12,7 +12,6 @@ import (
 	"math/rand"
 	"net"
 	"net/http"
-	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -28,6 +27,7 @@ import (
 	"github.com/nitishm/go-rejson/v4"
 	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
+	"golang.org/x/exp/slices"
 )
 
 type LiveChoices struct {
@@ -85,7 +85,7 @@ type MinerSuccessRates struct {
 	SuccessRateOverTime []float32 `json:"successRateOverTime"`
 	AvgSuccessRate      float32   `json:"avgSuccessRate"`
 	LastReset           time.Time `json:"lastReset"`
-	BottomTenTPS        float32   `json:"bottomTenTPS"`
+	SlowestQuintileTPS  float32   `json:"slowestQuintileTPS"`
 	AvgVerifiedRate     float32   `json:"avgVerifiedRate"`
 }
 
@@ -126,7 +126,7 @@ type JugoTPSResponse struct {
 	Verified_percentage float32   `json:"verified_percentage"`
 }
 
-func fetchOrganicStats(public string, private string, hotkey string, logger *zap.SugaredLogger, debug bool) {
+func fetchOrganicStats(public string, private string, hotkey string, logger *zap.SugaredLogger) {
 	endpoint := "https://jugo.targon.com/organic-stats"
 
 	r, err := http.NewRequest("GET", endpoint, nil)
@@ -192,24 +192,24 @@ func fetchOrganicStats(public string, private string, hotkey string, logger *zap
 
 		if msrm, ok := minerSuccessRatesMap[uid]; ok {
 			msrm.mu.Lock()
-			msrm.AvgVerifiedRate = stats.Verified_percentage
-			// Calculate bottom 10% TPS if we have TPS values
+			msrm.AvgVerifiedRate = min(stats.Verified_percentage/100.0, 1.0)
+			logger.Info(fmt.Sprintf("%v", msrm.AvgVerifiedRate))
+			// Calculate bottom 20% TPS if we have TPS values
 			if len(stats.Tps_values) == 0 {
 				msrm.mu.Unlock()
 				continue
 			}
 			// Sort TPS values
-			sort.Slice(stats.Tps_values, func(i, j int) bool {
-				return stats.Tps_values[i] < stats.Tps_values[j]
-			})
+			slices.Sort(stats.Tps_values)
 
-			bottomCount := max(len(stats.Tps_values)/10, 1)
+			bottomCount := max(len(stats.Tps_values)/5, 1)
 
 			var sum float32 = 0
-			for i := 0; i < bottomCount; i++ {
+
+			for i := range int(bottomCount) {
 				sum += stats.Tps_values[i]
 			}
-			msrm.BottomTenTPS = sum / float32(bottomCount)
+			msrm.SlowestQuintileTPS = sum / float32(bottomCount)
 
 			msrm.mu.Unlock()
 		}
@@ -234,7 +234,7 @@ func ReportStats(public string, private string, hotkey string, logger *zap.Sugar
 	}}})
 
 	if reset {
-		fetchOrganicStats(public, private, hotkey, logger, debug)
+		fetchOrganicStats(public, private, hotkey, logger)
 
 		// Total attempted window is the same as success rate
 		globalStats.mu.Lock()
@@ -405,7 +405,11 @@ func getMinerForModel(c *shared.Context, model string, specific_uid *int) (*shar
 
 		msrm := minerSuccessRatesMap[uid]
 		msrm.mu.Lock()
-		successRate := msrm.AvgSuccessRate
+		tpsModifier := float32(1)
+		if msrm.SlowestQuintileTPS > 0 {
+			// no penalty if your worst 20% is > 100 TPS, can be scaled as subnet improves, ATM no one achieves this
+			tpsModifier = min(msrm.SlowestQuintileTPS/100.0, 1.0)
+		}
 		liveSuccessRate := float32(1)
 
 		if msrm.Attempted > 10 {
@@ -415,7 +419,10 @@ func getMinerForModel(c *shared.Context, model string, specific_uid *int) (*shar
 
 		// scale so we have room to play with percentages
 		weight := miners[i].Weight * 100
-		weight = max(int(float32(weight)*successRate*liveSuccessRate), 0)
+
+		successRate := msrm.AvgSuccessRate
+		verifiedRate := msrm.AvgVerifiedRate
+		weight = max(int(float32(weight)*successRate*liveSuccessRate*verifiedRate*tpsModifier), 0)
 
 		// Still need to give these miners a chance to re-gain trust, so cant fully zero
 		if successRate < .50 || liveSuccessRate < .5 {
@@ -561,7 +568,7 @@ func QueryMiner(c *shared.Context, req *shared.RequestInfo) (*shared.ResponseInf
 	// Cancel with timer
 	responseError := "never receieved DONE token"
 	r = r.WithContext(ctx)
-	timer = time.AfterFunc(8*time.Second, func() {
+	timer = time.AfterFunc(12*time.Second, func() {
 		responseError = "first token took too long"
 		cancel()
 	})
@@ -596,47 +603,45 @@ func QueryMiner(c *shared.Context, req *shared.RequestInfo) (*shared.ResponseInf
 		default:
 			timer.Stop()
 			token := reader.Text()
+			token = strings.TrimSpace(token)
 			if c.Cfg.Env.Debug {
 				fmt.Println(token)
 			}
-
 			token, found := strings.CutPrefix(token, "data: ")
 			if !found {
 				continue
 			}
-			if len(strings.TrimSpace(token)) < 3 {
+			if len(token) < 3 {
 				break
 			}
-			fmt.Fprint(c.Response(), token+"\n\n")
+			fmt.Fprint(c.Response(), "data: "+token+"\n\n")
 			c.Response().Flush()
-			if token == "data: [DONE]" {
+			if token == "[DONE]" {
 				responseError = ""
 				finished = true
 				break
 			}
-			if found {
-				if tokens == 0 {
-					timeToFirstToken = int64(time.Since(start) / time.Millisecond)
-					c.Log.Infow(
-						"time to first token",
-						"duration",
-						fmt.Sprintf("%d", time.Since(req.StartTime)/time.Millisecond),
-						"from",
-						"miner",
-					)
-				}
-				tokens += 1
-				var response map[string]any
-				err := json.Unmarshal([]byte(token), &response)
-				if err != nil {
-					c.Log.Warnw(
-						fmt.Sprintf("Failed decoding token %s", token),
-						"error", err.Error(),
-					)
-					continue
-				}
-				llmResponse = append(llmResponse, response)
+			if tokens == 0 {
+				timeToFirstToken = int64(time.Since(start) / time.Millisecond)
+				c.Log.Infow(
+					"time to first token",
+					"duration",
+					fmt.Sprintf("%d", time.Since(req.StartTime)/time.Millisecond),
+					"from",
+					"miner",
+				)
 			}
+			tokens += 1
+			var response map[string]any
+			err := json.Unmarshal([]byte(token), &response)
+			if err != nil {
+				c.Log.Warnw(
+					fmt.Sprintf("Failed decoding token %s", token),
+					"error", err.Error(),
+				)
+				continue
+			}
+			llmResponse = append(llmResponse, response)
 		}
 	}
 	res.Body.Close()

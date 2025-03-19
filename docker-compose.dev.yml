@@ -8,12 +8,21 @@ services:
       - traefik.http.routers.api.tls=false
       - traefik.http.routers.api.tls.certresolver=
       - traefik.http.services.api.loadbalancer.server.port=80
+    build:
+      context: ./api
+      platforms: !override
+      - linux/arm64
   vram-estimator:
     labels:
       - traefik.enable=true
       - traefik.http.routers.vram.rule=Host(`estimate.localhost`)
       - traefik.http.routers.vram.tls=false
       - traefik.http.services.vram.loadbalancer.server.port=80
+    build:
+      context: ./vram-estimator
+      platforms: !override
+      - linux/arm64
+
   traefik:
     ports:
       - 80:80
@@ -24,3 +33,8 @@ services:
   vector:
     profiles:
       - "production"
+  miner-cache:
+    build:
+      context: ./miner-cache
+      platforms: !override
+      - linux/arm64
