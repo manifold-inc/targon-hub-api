@@ -470,19 +470,9 @@ func parseChunk(chunk map[string]interface{}, requestType string) *string {
 			return nil
 		}
 		
-		role, _ := delta["role"].(string)
-		if role == "assistant" {
-			hasContent := false
-			for _, k := range []string{"content", "tool_calls", "function_call"} {
-				if _, exists := delta[k]; exists {
-					hasContent = true
-					break
-				}
-			}
-			
-			if !hasContent {
-				return nil
-			}
+		role, hasRole := delta["role"].(string)
+		if hasRole && role == "assistant" {
+			return &role
 		}
 		
 		if toolCalls, exists := delta["tool_calls"]; exists && toolCalls != nil {
