@@ -453,6 +453,70 @@ func getMinerForModel(c *shared.Context, model string, specific_uid *int) (*shar
 	return &miner, nil
 }
 
+func parseChunk(chunk map[string]interface{}, requestType string) *string {
+	choices, ok := chunk["choices"].([]interface{})
+	if !ok || len(choices) == 0 {
+		return nil
+	}
+	
+	choice, ok := choices[0].(map[string]interface{})
+	if !ok {
+		return nil
+	}
+	
+	if requestType == "CHAT" {
+		delta, ok := choice["delta"].(map[string]interface{})
+		if !ok {
+			return nil
+		}
+		
+		role, _ := delta["role"].(string)
+		if role == "assistant" {
+			hasContent := false
+			for _, k := range []string{"content", "tool_calls", "function_call"} {
+				if _, exists := delta[k]; exists {
+					hasContent = true
+					break
+				}
+			}
+			
+			if !hasContent {
+				return nil
+			}
+		}
+		
+		if toolCalls, exists := delta["tool_calls"]; exists && toolCalls != nil {
+			toolCallsArr, ok := toolCalls.([]interface{})
+			if ok && len(toolCallsArr) > 0 {
+				toolCall, ok := toolCallsArr[0].(map[string]interface{})
+				if ok {
+					if _, exists := toolCall["function"]; exists {
+						jsonData, err := json.Marshal(toolCall)
+						if err == nil {
+							str := string(jsonData)
+							return &str
+						}
+					}
+				}
+			}
+		}
+		
+		if content, exists := delta["content"]; exists {
+			if text, ok := content.(string); ok {
+				return &text
+			}
+		}
+		
+		return nil
+	} else if requestType == "COMPLETION" {
+		if text, ok := choice["text"].(string); ok {
+			return &text
+		}
+	}
+	
+	return nil
+}
+
 func QueryMiner(c *shared.Context, req *shared.RequestInfo) (*shared.ResponseInfo, error) {
 	var miner shared.Miner
 
@@ -611,16 +675,31 @@ func QueryMiner(c *shared.Context, req *shared.RequestInfo) (*shared.ResponseInf
 			if !found {
 				continue
 			}
-			if len(token) < 3 {
-				break
-			}
-			fmt.Fprint(c.Response(), "data: "+token+"\n\n")
-			c.Response().Flush()
+	
 			if token == "[DONE]" {
 				responseError = ""
 				finished = true
 				break
 			}
+	
+			var chunk map[string]interface{}
+			err := json.Unmarshal([]byte(token), &chunk)
+			if err != nil {
+				c.Log.Warnw(
+					fmt.Sprintf("Failed decoding token %s", token),
+					"error", err.Error(),
+				)
+				continue
+			}
+	
+			result := parseChunk(chunk, req.Endpoint)
+			if result == nil {
+				continue
+			}
+	
+			fmt.Fprint(c.Response(), "data: "+token+"\n\n")
+			c.Response().Flush()
+			
 			if tokens == 0 {
 				timeToFirstToken = int64(time.Since(start) / time.Millisecond)
 				c.Log.Infow(
@@ -632,16 +711,7 @@ func QueryMiner(c *shared.Context, req *shared.RequestInfo) (*shared.ResponseInf
 				)
 			}
 			tokens += 1
-			var response map[string]any
-			err := json.Unmarshal([]byte(token), &response)
-			if err != nil {
-				c.Log.Warnw(
-					fmt.Sprintf("Failed decoding token %s", token),
-					"error", err.Error(),
-				)
-				continue
-			}
-			llmResponse = append(llmResponse, response)
+			llmResponse = append(llmResponse, chunk)
 		}
 	}
 	res.Body.Close()
