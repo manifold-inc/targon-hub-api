@@ -453,20 +453,25 @@ func getMinerForModel(c *shared.Context, model string, specific_uid *int) (*shar
 	return &miner, nil
 }
 
-func parseChunk(chunk map[string]interface{}, requestType string) error {
-	choices, ok := chunk["choices"].([]interface{})
+func parseChunk(chunk map[string]any, requestType string) error {
+	_, ok := chunk["usage"].([]any)
+	if ok {
+		return nil
+	}
+
+	choices, ok := chunk["choices"].([]any)
 	if !ok || len(choices) == 0 {
 		return errors.New("no choices")
 	}
 
-	choice, ok := choices[0].(map[string]interface{})
+	choice, ok := choices[0].(map[string]any)
 	if !ok {
 		return errors.New("first choice not in expected format")
 	}
 
 	switch requestType {
 	case shared.ENDPOINTS.CHAT:
-		delta, ok := choice["delta"].(map[string]interface{})
+		delta, ok := choice["delta"].(map[string]any)
 		if !ok {
 			return errors.New("delta not in expected format")
 		}
@@ -477,9 +482,9 @@ func parseChunk(chunk map[string]interface{}, requestType string) error {
 		}
 
 		if toolCalls, exists := delta["tool_calls"]; exists && toolCalls != nil {
-			toolCallsArr, ok := toolCalls.([]interface{})
+			toolCallsArr, ok := toolCalls.([]any)
 			if ok && len(toolCallsArr) > 0 {
-				toolCall, ok := toolCallsArr[0].(map[string]interface{})
+				toolCall, ok := toolCallsArr[0].(map[string]any)
 				if ok {
 					if _, exists := toolCall["function"]; exists {
 						return nil
@@ -671,7 +676,7 @@ func QueryMiner(c *shared.Context, req *shared.RequestInfo) (*shared.ResponseInf
 				break
 			}
 
-			var chunk map[string]interface{}
+			var chunk map[string]any
 			err := json.Unmarshal([]byte(token), &chunk)
 			if err != nil {
 				continue
