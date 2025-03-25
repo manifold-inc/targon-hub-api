@@ -453,57 +453,56 @@ func getMinerForModel(c *shared.Context, model string, specific_uid *int) (*shar
 	return &miner, nil
 }
 
-func parseChunk(chunk map[string]interface{}, requestType string) *string {
+func parseChunk(chunk map[string]interface{}, requestType string) error {
 	choices, ok := chunk["choices"].([]interface{})
 	if !ok || len(choices) == 0 {
-		return nil
+		return errors.New("no choices")
 	}
-	
+
 	choice, ok := choices[0].(map[string]interface{})
 	if !ok {
-		return nil
+		return errors.New("first choice not in expected format")
 	}
-	
-	if requestType == "CHAT" {
+
+	switch requestType {
+	case shared.ENDPOINTS.CHAT:
 		delta, ok := choice["delta"].(map[string]interface{})
 		if !ok {
-			return nil
+			return errors.New("delta not in expected format")
 		}
-		
+
 		role, hasRole := delta["role"].(string)
 		if hasRole && role == "assistant" {
-			return &role
+			return nil
 		}
-		
+
 		if toolCalls, exists := delta["tool_calls"]; exists && toolCalls != nil {
 			toolCallsArr, ok := toolCalls.([]interface{})
 			if ok && len(toolCallsArr) > 0 {
 				toolCall, ok := toolCallsArr[0].(map[string]interface{})
 				if ok {
 					if _, exists := toolCall["function"]; exists {
-						jsonData, err := json.Marshal(toolCall)
-						if err == nil {
-							str := string(jsonData)
-							return &str
-						}
+						return nil
 					}
 				}
 			}
 		}
-		
+
 		if content, exists := delta["content"]; exists {
-			if text, ok := content.(string); ok {
-				return &text
+			if _, ok := content.(string); ok {
+				return nil
 			}
 		}
-		
+
 		return nil
-	} else if requestType == "COMPLETION" {
-		if text, ok := choice["text"].(string); ok {
-			return &text
+	case shared.ENDPOINTS.COMPLETION:
+		if _, ok := choice["text"].(string); ok {
+			return nil
 		}
+	default:
+		return errors.New("unknown request type")
 	}
-	
+
 	return nil
 }
 
@@ -665,31 +664,27 @@ func QueryMiner(c *shared.Context, req *shared.RequestInfo) (*shared.ResponseInf
 			if !found {
 				continue
 			}
-	
+
 			if token == "[DONE]" {
 				responseError = ""
 				finished = true
 				break
 			}
-	
+
 			var chunk map[string]interface{}
 			err := json.Unmarshal([]byte(token), &chunk)
 			if err != nil {
-				c.Log.Warnw(
-					fmt.Sprintf("Failed decoding token %s", token),
-					"error", err.Error(),
-				)
 				continue
 			}
-	
-			result := parseChunk(chunk, req.Endpoint)
-			if result == nil {
+
+			err = parseChunk(chunk, req.Endpoint)
+			if err != nil {
 				continue
 			}
-	
+
 			fmt.Fprint(c.Response(), "data: "+token+"\n\n")
 			c.Response().Flush()
-			
+
 			if tokens == 0 {
 				timeToFirstToken = int64(time.Since(start) / time.Millisecond)
 				c.Log.Infow(
