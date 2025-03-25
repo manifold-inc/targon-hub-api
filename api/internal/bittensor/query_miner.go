@@ -453,6 +453,59 @@ func getMinerForModel(c *shared.Context, model string, specific_uid *int) (*shar
 	return &miner, nil
 }
 
+func parseChunk(chunk map[string]interface{}, requestType string) error {
+	choices, ok := chunk["choices"].([]interface{})
+	if !ok || len(choices) == 0 {
+		return errors.New("no choices")
+	}
+
+	choice, ok := choices[0].(map[string]interface{})
+	if !ok {
+		return errors.New("first choice not in expected format")
+	}
+
+	switch requestType {
+	case shared.ENDPOINTS.CHAT:
+		delta, ok := choice["delta"].(map[string]interface{})
+		if !ok {
+			return errors.New("delta not in expected format")
+		}
+
+		role, hasRole := delta["role"].(string)
+		if hasRole && role == "assistant" {
+			return nil
+		}
+
+		if toolCalls, exists := delta["tool_calls"]; exists && toolCalls != nil {
+			toolCallsArr, ok := toolCalls.([]interface{})
+			if ok && len(toolCallsArr) > 0 {
+				toolCall, ok := toolCallsArr[0].(map[string]interface{})
+				if ok {
+					if _, exists := toolCall["function"]; exists {
+						return nil
+					}
+				}
+			}
+		}
+
+		if content, exists := delta["content"]; exists {
+			if _, ok := content.(string); ok {
+				return nil
+			}
+		}
+
+		return nil
+	case shared.ENDPOINTS.COMPLETION:
+		if _, ok := choice["text"].(string); ok {
+			return nil
+		}
+	default:
+		return errors.New("unknown request type")
+	}
+
+	return nil
+}
+
 func QueryMiner(c *shared.Context, req *shared.RequestInfo) (*shared.ResponseInfo, error) {
 	var miner shared.Miner
 
@@ -611,16 +664,27 @@ func QueryMiner(c *shared.Context, req *shared.RequestInfo) (*shared.ResponseInf
 			if !found {
 				continue
 			}
-			if len(token) < 3 {
-				break
-			}
-			fmt.Fprint(c.Response(), "data: "+token+"\n\n")
-			c.Response().Flush()
+
 			if token == "[DONE]" {
 				responseError = ""
 				finished = true
 				break
 			}
+
+			var chunk map[string]interface{}
+			err := json.Unmarshal([]byte(token), &chunk)
+			if err != nil {
+				continue
+			}
+
+			err = parseChunk(chunk, req.Endpoint)
+			if err != nil {
+				continue
+			}
+
+			fmt.Fprint(c.Response(), "data: "+token+"\n\n")
+			c.Response().Flush()
+
 			if tokens == 0 {
 				timeToFirstToken = int64(time.Since(start) / time.Millisecond)
 				c.Log.Infow(
@@ -632,16 +696,7 @@ func QueryMiner(c *shared.Context, req *shared.RequestInfo) (*shared.ResponseInf
 				)
 			}
 			tokens += 1
-			var response map[string]any
-			err := json.Unmarshal([]byte(token), &response)
-			if err != nil {
-				c.Log.Warnw(
-					fmt.Sprintf("Failed decoding token %s", token),
-					"error", err.Error(),
-				)
-				continue
-			}
-			llmResponse = append(llmResponse, response)
+			llmResponse = append(llmResponse, chunk)
 		}
 	}
 	res.Body.Close()
