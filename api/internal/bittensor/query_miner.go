@@ -454,7 +454,7 @@ func getMinerForModel(c *shared.Context, model string, specific_uid *int) (*shar
 }
 
 func parseChunk(chunk map[string]any, requestType string, index int) error {
-	_, ok := chunk["usage"].([]any)
+	_, ok := chunk["usage"].(map[string]any)
 	if ok && index != 0 {
 		return nil
 	}
@@ -679,11 +679,13 @@ func QueryMiner(c *shared.Context, req *shared.RequestInfo) (*shared.ResponseInf
 			var chunk map[string]any
 			err := json.Unmarshal([]byte(token), &chunk)
 			if err != nil {
+				c.Log.Debugw("Failed to unmarshal", "error", err.Error())
 				continue
 			}
 
 			err = parseChunk(chunk, req.Endpoint, tokens)
 			if err != nil {
+				c.Log.Debugw("Skipped chunk", "error", err.Error())
 				continue
 			}
 
