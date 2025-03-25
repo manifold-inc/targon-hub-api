@@ -453,9 +453,9 @@ func getMinerForModel(c *shared.Context, model string, specific_uid *int) (*shar
 	return &miner, nil
 }
 
-func parseChunk(chunk map[string]any, requestType string) error {
+func parseChunk(chunk map[string]any, requestType string, index int) error {
 	_, ok := chunk["usage"].([]any)
-	if ok {
+	if ok && index != 0 {
 		return nil
 	}
 
@@ -682,7 +682,7 @@ func QueryMiner(c *shared.Context, req *shared.RequestInfo) (*shared.ResponseInf
 				continue
 			}
 
-			err = parseChunk(chunk, req.Endpoint)
+			err = parseChunk(chunk, req.Endpoint, tokens)
 			if err != nil {
 				continue
 			}
