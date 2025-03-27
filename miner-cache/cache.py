@@ -105,7 +105,9 @@ async def sync_miners():
     for uid, axon, models, jugo_info, err in task_responses:
         jugo_info_list.append(jugo_info)
         if err != None:
-            logger.error(err)
+            logger.error(f"UID {uid}: {err}")
+        else:
+            logger.info(f"UID {uid}: {models}")
         for model, qps in models.items():
             redis_miner_data = {
                 "ip": axon.ip,
@@ -115,7 +117,6 @@ async def sync_miners():
                 "uid": uid,
                 "weight": min(1000, qps),
             }
-            logger.info(redis_miner_data)
             if miner_models.get(model) is None:
                 miner_models[model] = []
             miner_models[model].append(redis_miner_data)
