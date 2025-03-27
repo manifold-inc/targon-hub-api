@@ -743,7 +743,6 @@ func QueryMiner(c *shared.Context, req *shared.RequestInfo) (*shared.ResponseInf
 		minerSuccessRatesMap[miner.Uid].mu.Lock()
 		minerSuccessRatesMap[miner.Uid].Partial++
 		minerSuccessRatesMap[miner.Uid].mu.Unlock()
-		responseInfo.Error = "Premature end of generation"
 		return responseInfo, nil
 	}
 	c.Log.Infow(
