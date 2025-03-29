@@ -19,22 +19,22 @@ logger = setupLogging()
 DEBUG = os.getenv("DEBUG", False)
 
 
-async def get_models(session, hotkey, axon) -> Tuple[Dict[str, int], str]:
+async def get_models(session, hotkey, axon) -> Tuple[Dict[str, int], Optional[str]]:
     headers = generate_header(hotkey, b"", axon.hotkey)
     try:
         async with session.get(
             f"http://{axon.ip}:{axon.port}/models",
             headers=headers,
-            timeout=3,
+            timeout=10,
         ) as res:
             if res.status != 200:
                 return {}, f"status code {res.status}"
             models = await res.json()
             if not isinstance(models, dict):
                 return {}, f"Response is not dict"
-            return models, ""
+            return models, None
     except Exception as e:
-        return {}, f"{e}"
+        return {}, f"{e}, {type(e)}"
 
 
 async def send_uid_info_to_jugo(session: aiohttp.ClientSession, data: List[Dict]):
@@ -56,7 +56,7 @@ async def send_uid_info_to_jugo(session: aiohttp.ClientSession, data: List[Dict]
 
 async def get_infos(
     uid, session, hotkey, axon
-) -> Tuple[int, Any, Dict[str, int], Dict, str]:
+) -> Tuple[int, Any, Dict[str, int], Dict, Optional[str]]:
     models, err = await get_models(session, hotkey, axon)
     jugo_info = {
         "uid": uid,
