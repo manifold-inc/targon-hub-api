@@ -77,7 +77,7 @@ func preprocessOpenaiRequest(
 		return nil, &shared.RequestError{
 			StatusCode: 400,
 			Err: errors.New(
-				"targon only supports basic chat requests with `role:string` and `content:string`",
+				"Malformed request",
 			),
 		}
 	}
