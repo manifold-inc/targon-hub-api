@@ -52,8 +52,6 @@ type RequestInfo struct {
 	UserId          int
 	Body            []byte
 	Endpoint        string
-	Miner           *int
-	MinerHost       string
 	Id              string
 	StartTime       time.Time
 	Chargeable      bool
@@ -62,24 +60,13 @@ type RequestInfo struct {
 
 // Organize Fields Dependent on Type of Response
 type ResponseInfo struct {
-	Miner     Miner
 	Success   bool
 	TotalTime int64
 
 	Type             string
 	TimeToFirstToken int64
 	ResponseTokens   int
-	Responses        []map[string]interface{}
 	Error            string
-}
-
-type Miner struct {
-	Ip      string `json:"ip,omitempty"`
-	Port    int    `json:"port,omitempty"`
-	Hotkey  string `json:"hotkey,omitempty"`
-	Coldkey string `json:"coldkey,omitempty"`
-	Uid     int    `json:"uid,omitempty"`
-	Weight  int    `json:"weight"`
 }
 
 type Request struct {

@@ -5,8 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
-	"math/rand"
-	"strconv"
 	"strings"
 	"time"
 
@@ -109,29 +107,8 @@ func preprocessOpenaiRequest(
 		payload["stream"] = true
 	}
 
-	if val, ok := payload["seed"]; !ok || val == nil {
-		payload["seed"] = rand.Intn(100000)
-	}
-
-	if _, ok := payload["temperature"]; !ok {
-		payload["temperature"] = 1
-	}
-
 	if _, ok := payload["max_tokens"]; !ok {
 		payload["max_tokens"] = 512
-	}
-
-	// Enforce a minimum of 50 tokens for chargeable users
-	if chargeable {
-		// Get the max_tokens value
-		if maxTokens, ok := payload["max_tokens"].(float64); ok && maxTokens < 50 {
-			// Set it to 50 if it's below that
-			payload["max_tokens"] = float64(50)
-		}
-	}
-
-	payload["stream_options"] = map[string]any{
-		"include_usage": true,
 	}
 
 	// Repackage body
@@ -140,20 +117,6 @@ func preprocessOpenaiRequest(
 		c.Log.Errorw("Failed re-marshaling request", "error", err.Error())
 		return nil, &shared.RequestError{StatusCode: 500, Err: errors.New("internal server error")}
 	}
-
-	// Create request info data
-	var miner, minerHost string
 	res := &shared.RequestInfo{Body: body, UserId: userid, StartingCredits: credits, Id: c.Reqid, Chargeable: chargeable, StartTime: startTime, Endpoint: endpoint, Model: model.(string)}
-	if c.Cfg.Env.Debug {
-		miner = c.Request().Header.Get("X-Targon-Miner-Uid")
-		minerHost = c.Request().Header.Get("X-Targon-Miner-Ip")
-	}
-	miner_uid, err := strconv.Atoi(miner)
-	if err == nil {
-		res.Miner = &miner_uid
-		c.Log.Infof("selecting miner %d", miner_uid)
-	}
-	res.MinerHost = minerHost
-
 	return res, nil
 }
