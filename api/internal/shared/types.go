@@ -70,7 +70,6 @@ type ResponseInfo struct {
 }
 
 type Request struct {
-	Messages  []ChatMessage `json:"messages"`
 	MaxTokens uint64        `json:"max_tokens"`
 	Model     string        `json:"model"`
 }
