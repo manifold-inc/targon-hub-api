@@ -31,18 +31,6 @@ services:
       cache:
         condition: service_healthy
 
-  miner-cache:
-    image: manifoldlabs/targon-hub-miner-cache:${VERSION:-latest}
-    env_file: .env
-    build:
-      context: ./miner-cache
-      platforms: 
-      - linux/amd64
-    restart: always
-    depends_on:
-      cache:
-        condition: service_healthy
-
   cache:
     image: redis/redis-stack-server:latest
     restart: always

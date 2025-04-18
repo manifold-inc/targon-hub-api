@@ -33,8 +33,3 @@ services:
   vector:
     profiles:
       - "production"
-  miner-cache:
-    build:
-      context: ./miner-cache
-      platforms: !override
-      - linux/arm64

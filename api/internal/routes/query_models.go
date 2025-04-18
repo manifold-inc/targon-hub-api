@@ -17,7 +17,7 @@ import (
 	"api/internal/shared"
 )
 
-func QueryFallback(c *shared.Context, req *shared.RequestInfo) *shared.RequestError {
+func QueryModels(c *shared.Context, req *shared.RequestInfo) *shared.RequestError {
 	// Get Fallback Server
 	var fallback_server string
 	err := c.Cfg.ReadSqlClient.QueryRow("SELECT model.fallback_server FROM model WHERE model.name = ?", req.Model).

@@ -1,9 +1,6 @@
 package main
 
 import (
-	"time"
-
-	"api/internal/bittensor"
 	"api/internal/config"
 	"api/internal/ratelimit"
 	"api/internal/routes"
@@ -29,7 +26,6 @@ func main() {
 		}
 		panic("Failed to init config")
 	}
-	bittensor.InitMiners()
 	defer cfg.Shutdown()
 
 	e := echo.New()
@@ -71,27 +67,6 @@ func main() {
 
 	// Non-rate-limited endpoints
 	e.GET("/v1/models", routes.Models)
-	e.GET("/ws/weights", routes.WebsocketWeights)
-
-	ticker := time.NewTicker(10 * time.Second)
-	defer ticker.Stop()
-
-	go func() {
-		count := 0
-		for range ticker.C {
-			count++
-			reset := false
-			// reset every 5 minutes
-			// sliding window is 10 slots; total clear every 50 min
-			if count == 6*5 {
-				reset = true
-				count = 0
-			}
-			sugar.Infof("Broadcasting stats to jugo. Tick %d", count)
-			bittensor.ReportStats(cfg.Env.PublicKey, cfg.Env.PrivateKey, cfg.Env.Hotkey, sugar, reset, cfg.Env.Debug)
-			sugar.Infof("Finished jugo broadcast. Tick %d", count)
-		}
-	}()
 
 	e.Logger.Fatal(e.Start(":80"))
 }
