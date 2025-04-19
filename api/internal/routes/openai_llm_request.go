@@ -1,6 +1,7 @@
 package routes
 
 import (
+	"api/internal/database"
 	"api/internal/shared"
 
 	"github.com/labstack/echo/v4"
@@ -25,6 +26,8 @@ func ProcessOpenaiRequest(cc echo.Context, endpoint string) error {
 	}
 
 	qerr := QueryModels(c, request)
+	// TODO @ahmed populate this correctly
+	go database.SaveRequest(c.Cfg.SqlClient, c.Cfg.ReadSqlClient, &shared.ResponseInfo{}, request, c.Log)
 	if qerr != nil {
 		c.Log.Warnw("Failed fallback", "error", qerr.Error(), "final", "true", "status", "failed")
 		return c.JSON(503, shared.OpenAIError{
