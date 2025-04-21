@@ -49,7 +49,9 @@ func SaveRequest(sqlClient *sql.DB, readSqlClient *sql.DB, res *shared.ResponseI
 	// Update credits
 	usedCredits := int64(0)
 	input_tokens_approx := max(len(string(req.Body))/10, 1)
-	usedCredits = (int64(res.ResponseTokens) + int64(input_tokens_approx)) * int64(cpt)
+	if res != nil {
+		usedCredits = (int64(res.ResponseTokens) + int64(input_tokens_approx)) * int64(cpt)
+	}
 
 	if !req.Chargeable {
 		usedCredits = 0
@@ -80,7 +82,11 @@ func SaveRequest(sqlClient *sql.DB, readSqlClient *sql.DB, res *shared.ResponseI
 	userMutexes.umap[req.UserId].Unlock()
 
 	var timeForFirstToken int64 = 0
-	timeForFirstToken = res.TimeToFirstToken
+	var totalTime int64 = 0
+	if res != nil {
+		timeForFirstToken = res.TimeToFirstToken
+		totalTime = res.TotalTime
+	}
 
 	_, err = sqlClient.Exec(`
 	INSERT INTO 
@@ -97,9 +103,9 @@ func SaveRequest(sqlClient *sql.DB, readSqlClient *sql.DB, res *shared.ResponseI
 		"",
 		"",
 		req.Endpoint,
-		res.Success,
+		res != nil,
 		timeForFirstToken,
-		res.TotalTime,
+		totalTime,
 		1,
 	)
 	if err != nil {

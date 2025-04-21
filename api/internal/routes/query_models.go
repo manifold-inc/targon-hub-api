@@ -17,16 +17,16 @@ import (
 	"api/internal/shared"
 )
 
-func QueryModels(c *shared.Context, req *shared.RequestInfo) *shared.RequestError {
+func QueryModels(c *shared.Context, req *shared.RequestInfo) (*shared.ResponseInfo, *shared.RequestError) {
 	// Get Fallback Server
 	var fallback_server string
 	err := c.Cfg.ReadSqlClient.QueryRow("SELECT model.fallback_server FROM model WHERE model.name = ?", req.Model).
 		Scan(&fallback_server)
 	if err == sql.ErrNoRows && !c.Cfg.Env.Debug {
-		return &shared.RequestError{StatusCode: 400, Err: fmt.Errorf("no model found for %s", req.Model)}
+		return nil, &shared.RequestError{StatusCode: 400, Err: fmt.Errorf("no model found for %s", req.Model)}
 	}
 	if err != nil {
-		return &shared.RequestError{StatusCode: 500, Err: errors.New("internal server error")}
+		return nil, &shared.RequestError{StatusCode: 500, Err: errors.New("internal server error")}
 	}
 
 	// Initialize http request
@@ -66,18 +66,19 @@ func QueryModels(c *shared.Context, req *shared.RequestInfo) *shared.RequestErro
 	}
 	if err != nil {
 		c.Log.Warnw("Fallback request failed", "error", err)
-		return &shared.RequestError{StatusCode: 429, Err: errors.New("fallback request failed")}
+		return nil, &shared.RequestError{StatusCode: 429, Err: errors.New("fallback request failed")}
 	}
 	if res.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(res.Body)
 		res.Body.Close()
 		c.Log.Warnw("Fallback request failed", "error", body)
-		return &shared.RequestError{StatusCode: 429, Err: errors.New("fallback request failed")}
+		return nil, &shared.RequestError{StatusCode: 429, Err: errors.New("fallback request failed")}
 	}
 	reader := bufio.NewScanner(res.Body)
 
 	// Stream back response
 	tokens := 0
+	var ttft int64
 scanner:
 	for reader.Scan() {
 		select {
@@ -88,7 +89,7 @@ scanner:
 			c.Log.Warnw("Request canceled by client during fallback",
 				"user_id", req.UserId)
 
-			return &shared.RequestError{StatusCode: 400, Err: errors.New("request canceled")}
+			return nil, &shared.RequestError{StatusCode: 400, Err: errors.New("request canceled")}
 		default:
 			token := reader.Text()
 			fmt.Fprint(c.Response(), token+"\n\n")
@@ -98,6 +99,7 @@ scanner:
 			}
 			if _, found := strings.CutPrefix(token, "data: "); found {
 				if tokens == 0 {
+					ttft = int64(time.Since(req.StartTime))
 					c.Log.Infow("time to first token", "duration", fmt.Sprintf("%d", time.Since(req.StartTime)/time.Millisecond), "from", "fallback")
 				}
 				tokens += 1
@@ -111,5 +113,10 @@ scanner:
 		"duration", fmt.Sprintf("%d", time.Since(req.StartTime)/time.Millisecond),
 		"tokens", tokens,
 	)
-	return nil
+	resInfo := shared.ResponseInfo{
+		TotalTime:        int64(time.Since(req.StartTime)),
+		ResponseTokens:   tokens,
+		TimeToFirstToken: ttft,
+	}
+	return &resInfo, nil
 }
