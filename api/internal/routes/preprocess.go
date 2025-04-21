@@ -65,8 +65,8 @@ func preprocessOpenaiRequest(
 	// add user id to future logs
 	c.Log = c.Log.With("user_id", userid)
 
-	body, _ := io.ReadAll(c.Request().Body)
 	// Ensure properly formatted request
+	body, _ := io.ReadAll(c.Request().Body)
 	var req shared.Request
 	err = json.Unmarshal(body, &req)
 	if err != nil {

@@ -25,9 +25,8 @@ func ProcessOpenaiRequest(cc echo.Context, endpoint string) error {
 		return c.String(preprocessError.StatusCode, preprocessError.Error())
 	}
 
-	qerr := QueryModels(c, request)
-	// TODO @ahmed populate this correctly
-	go database.SaveRequest(c.Cfg.SqlClient, c.Cfg.ReadSqlClient, &shared.ResponseInfo{}, request, c.Log)
+	resInfo, qerr := QueryModels(c, request)
+	go database.SaveRequest(c.Cfg.SqlClient, c.Cfg.ReadSqlClient, resInfo, request, c.Log)
 	if qerr != nil {
 		c.Log.Warnw("Failed fallback", "error", qerr.Error(), "final", "true", "status", "failed")
 		return c.JSON(503, shared.OpenAIError{

@@ -60,21 +60,12 @@ type RequestInfo struct {
 
 // Organize Fields Dependent on Type of Response
 type ResponseInfo struct {
-	Success   bool
 	TotalTime int64
-
-	Type             string
 	TimeToFirstToken int64
 	ResponseTokens   int
-	Error            string
 }
 
 type Request struct {
 	MaxTokens uint64        `json:"max_tokens"`
 	Model     string        `json:"model"`
-}
-
-type ChatMessage struct {
-	Role    string `json:"role"`
-	Content string `json:"content"`
 }
