@@ -78,7 +78,7 @@ func QueryModels(c *shared.Context, req *shared.RequestInfo) (*shared.ResponseIn
 
 	// Stream back response
 	tokens := 0
-	var ttft int64
+	var ttft int32
 scanner:
 	for reader.Scan() {
 		select {
@@ -99,7 +99,7 @@ scanner:
 			}
 			if _, found := strings.CutPrefix(token, "data: "); found {
 				if tokens == 0 {
-					ttft = int64(time.Since(req.StartTime))
+					ttft = int32(time.Since(req.StartTime))
 					c.Log.Infow("time to first token", "duration", fmt.Sprintf("%d", time.Since(req.StartTime)/time.Millisecond), "from", "fallback")
 				}
 				tokens += 1
@@ -114,7 +114,7 @@ scanner:
 		"tokens", tokens,
 	)
 	resInfo := shared.ResponseInfo{
-		TotalTime:        int64(time.Since(req.StartTime)),
+		TotalTime:        int32(time.Since(req.StartTime)),
 		ResponseTokens:   tokens,
 		TimeToFirstToken: ttft,
 	}

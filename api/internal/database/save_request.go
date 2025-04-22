@@ -81,8 +81,8 @@ func SaveRequest(sqlClient *sql.DB, readSqlClient *sql.DB, res *shared.ResponseI
 	}
 	userMutexes.umap[req.UserId].Unlock()
 
-	var timeForFirstToken int64 = 0
-	var totalTime int64 = 0
+	var timeForFirstToken int32 = 0
+	var totalTime int32 = 0
 	if res != nil {
 		timeForFirstToken = res.TimeToFirstToken
 		totalTime = res.TotalTime
