@@ -60,8 +60,8 @@ type RequestInfo struct {
 
 // Organize Fields Dependent on Type of Response
 type ResponseInfo struct {
-	TotalTime int64
-	TimeToFirstToken int64
+	TotalTime int32
+	TimeToFirstToken int32
 	ResponseTokens   int
 }
 
