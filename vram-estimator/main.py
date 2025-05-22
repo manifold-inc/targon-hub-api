@@ -72,7 +72,7 @@ def estimate_max_size(model_name, lib):
         return None
 
     total_size, _ = estimate.calculate_maximum_sizes(model)
-    return math.ceil(bytes_to_mib(total_size) / 81000)
+    return math.ceil(bytes_to_mib(total_size) / 143000)
 
 
 app = FastAPI()
