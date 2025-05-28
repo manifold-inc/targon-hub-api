@@ -15,6 +15,7 @@ type Context struct {
 	Log   *zap.SugaredLogger
 	Reqid string
 	Cfg   *config.Config
+	ExternalId string
 }
 
 type OpenAIError struct {

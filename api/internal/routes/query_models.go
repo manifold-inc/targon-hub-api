@@ -38,10 +38,12 @@ func QueryModels(c *shared.Context, req *shared.RequestInfo) (*shared.ResponseIn
 
 	// Create headers for connecting to fallback
 	headers := map[string]string{
-		"X-Targon-Model": req.Model,
-		"Authorization":  fmt.Sprintf("Bearer %s", c.Cfg.Env.FallbackApiKey),
-		"Content-Type":   "application/json",
-		"Connection":     "keep-alive",
+		"X-Targon-Model":       req.Model,
+		"Authorization":        fmt.Sprintf("Bearer %s", c.Cfg.Env.FallbackApiKey),
+		"Content-Type":         "application/json",
+		"Connection":           "keep-alive",
+		"X-Targon-Request-Id":  c.Reqid,
+		"X-Targon-External-Id": c.ExternalId,
 	}
 
 	// Set headers
@@ -52,25 +54,24 @@ func QueryModels(c *shared.Context, req *shared.RequestInfo) (*shared.ResponseIn
 	r = r.WithContext(c.Request().Context())
 	tr := &http.Transport{
 		Dial: (&net.Dialer{
-			Timeout: 2 * time.Second,
+			Timeout: 10 * time.Second,
 		}).Dial,
-		TLSHandshakeTimeout: 2 * time.Second,
+		TLSHandshakeTimeout: 5 * time.Second,
 		DisableKeepAlives:   false,
 	}
-	httpClient := http.Client{Transport: tr, Timeout: 2 * time.Minute}
+	httpClient := http.Client{Transport: tr, Timeout: 10 * time.Minute}
 
 	// Start Request
 	res, err := httpClient.Do(r)
-	if res != nil {
-		defer res.Body.Close()
-	}
 	if err != nil {
 		c.Log.Warnw("Fallback request failed", "error", err)
 		return nil, &shared.RequestError{StatusCode: 429, Err: errors.New("fallback request failed")}
 	}
+	defer func() {
+		_ = res.Body.Close()
+	}()
 	if res.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(res.Body)
-		res.Body.Close()
 		c.Log.Warnw("Fallback request failed", "error", body)
 		return nil, &shared.RequestError{StatusCode: 429, Err: errors.New("fallback request failed")}
 	}
@@ -92,7 +93,7 @@ scanner:
 			return nil, &shared.RequestError{StatusCode: 400, Err: errors.New("request canceled")}
 		default:
 			token := reader.Text()
-			fmt.Fprint(c.Response(), token+"\n\n")
+			_, _ = fmt.Fprint(c.Response(), token+"\n\n")
 			c.Response().Flush()
 			if token == "data: [DONE]" {
 				break scanner

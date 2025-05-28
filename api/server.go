@@ -36,9 +36,9 @@ func main() {
 			logger := sugar.With(
 				"request_id", "req_"+reqId,
 			)
-
-			logger = logger.With("externalid", c.Request().Header.Get("X-Dippy-Request-Id"))
-			cc := &shared.Context{Context: c, Log: logger, Reqid: reqId, Cfg: cfg}
+			externalId := c.Request().Header.Get("X-Dippy-Request-Id")
+			logger = logger.With("externalid", externalId)
+			cc := &shared.Context{Context: c, Log: logger, Reqid: reqId, Cfg: cfg, ExternalId: externalId}
 			return next(cc)
 		}
 	})
