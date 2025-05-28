@@ -37,6 +37,7 @@ func main() {
 				"request_id", "req_"+reqId,
 			)
 
+			logger = logger.With("externalid", c.Request().Header.Get("X-Dippy-Request-Id"))
 			cc := &shared.Context{Context: c, Log: logger, Reqid: reqId, Cfg: cfg}
 			return next(cc)
 		}
