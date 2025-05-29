@@ -113,7 +113,7 @@ scanner:
 	}
 	completeResponse := responseBuilder.String()
 	if req.UserId != 64 {
-		completeResponse = ""
+		completeResponse = "{}"
 	}
 	c.Log.Infow(
 		"Finished fallback request",
