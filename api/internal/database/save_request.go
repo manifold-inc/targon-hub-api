@@ -83,9 +83,11 @@ func SaveRequest(sqlClient *sql.DB, readSqlClient *sql.DB, res *shared.ResponseI
 
 	var timeForFirstToken int32 = 0
 	var totalTime int32 = 0
+	var responseTokensString string = "{}"
 	if res != nil {
 		timeForFirstToken = res.TimeToFirstToken
 		totalTime = res.TotalTime
+		responseTokensString = res.ResponseTokensString
 	}
 
 	_, err = sqlClient.Exec(`
@@ -96,7 +98,7 @@ func SaveRequest(sqlClient *sql.DB, readSqlClient *sql.DB, res *shared.ResponseI
 		req.UserId,
 		total_credits_used,
 		string(req.Body),
-		res.ResponseTokensString,
+		responseTokensString,
 		model_id,
 		0,
 		"",

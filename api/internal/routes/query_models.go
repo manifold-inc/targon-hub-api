@@ -81,6 +81,8 @@ func QueryModels(c *shared.Context, req *shared.RequestInfo) (*shared.ResponseIn
 	tokens := 0
 	var ttft int32
 	var responseBuilder strings.Builder
+	responseBuilder.WriteString("{")
+	firstToken := true
 scanner:
 	for reader.Scan() {
 		select {
@@ -94,27 +96,33 @@ scanner:
 			return nil, &shared.RequestError{StatusCode: 400, Err: errors.New("request canceled")}
 		default:
 			token := reader.Text()
-			responseBuilder.WriteString(token)
-			responseBuilder.WriteString("\n\n")
-			_, _ = fmt.Fprint(c.Response(), token+"\n\n")
-			c.Response().Flush()
 			if token == "data: [DONE]" {
 				c.Log.Infow("Inference engine returned [DONE]", "final", "true", "status", "success", "reqID", req.Id, "model", req.Model)
 				break scanner
 			}
 			if _, found := strings.CutPrefix(token, "data: "); found {
+				if !firstToken {
+					responseBuilder.WriteString(",")
+				}
+				escapedToken := strings.ReplaceAll(token, `"`, `\"`)
+				responseBuilder.WriteString(fmt.Sprintf(`"%d":"%s"`, tokens, escapedToken))
+				firstToken = false
 				if tokens == 0 {
 					ttft = int32(time.Since(req.StartTime))
 					c.Log.Infow("time to first token", "duration", fmt.Sprintf("%d", time.Since(req.StartTime)/time.Millisecond), "from", "fallback")
 				}
 				tokens += 1
 			}
+			_, _ = fmt.Fprint(c.Response(), token)
+			c.Response().Flush()
 		}
 	}
+	responseBuilder.WriteString("}")
 	completeResponse := responseBuilder.String()
 	if req.UserId != 64 {
 		completeResponse = "{}"
 	}
+
 	c.Log.Infow(
 		"Finished fallback request",
 		"final", "true",
