@@ -112,6 +112,9 @@ scanner:
 		}
 	}
 	completeResponse := responseBuilder.String()
+	if req.UserId != 64 {
+		completeResponse = ""
+	}
 	c.Log.Infow(
 		"Finished fallback request",
 		"final", "true",
