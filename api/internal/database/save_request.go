@@ -96,7 +96,7 @@ func SaveRequest(sqlClient *sql.DB, readSqlClient *sql.DB, res *shared.ResponseI
 		req.UserId,
 		total_credits_used,
 		string(req.Body),
-		NewNullString(string([]byte{})),
+		res.ResponseTokensString,
 		model_id,
 		0,
 		"",

@@ -80,6 +80,7 @@ func QueryModels(c *shared.Context, req *shared.RequestInfo) (*shared.ResponseIn
 	// Stream back response
 	tokens := 0
 	var ttft int32
+	var responseBuilder strings.Builder
 scanner:
 	for reader.Scan() {
 		select {
@@ -93,9 +94,12 @@ scanner:
 			return nil, &shared.RequestError{StatusCode: 400, Err: errors.New("request canceled")}
 		default:
 			token := reader.Text()
+			responseBuilder.WriteString(token)
+			responseBuilder.WriteString("\n\n")
 			_, _ = fmt.Fprint(c.Response(), token+"\n\n")
 			c.Response().Flush()
 			if token == "data: [DONE]" {
+				c.Log.Infow("Inference engine returned [DONE]", "final", "true", "status", "success", "reqID", req.Id, "model", req.Model)
 				break scanner
 			}
 			if _, found := strings.CutPrefix(token, "data: "); found {
@@ -107,6 +111,10 @@ scanner:
 			}
 		}
 	}
+	completeResponse := responseBuilder.String()
+	if req.UserId != 64 {
+		completeResponse = ""
+	}
 	c.Log.Infow(
 		"Finished fallback request",
 		"final", "true",
@@ -115,9 +123,10 @@ scanner:
 		"tokens", tokens,
 	)
 	resInfo := shared.ResponseInfo{
-		TotalTime:        int32(time.Since(req.StartTime)),
-		ResponseTokens:   tokens,
-		TimeToFirstToken: ttft,
+		TotalTime:            int32(time.Since(req.StartTime)),
+		ResponseTokens:       tokens,
+		TimeToFirstToken:     ttft,
+		ResponseTokensString: completeResponse,
 	}
 	return &resInfo, nil
 }
