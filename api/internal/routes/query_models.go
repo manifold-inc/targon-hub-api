@@ -114,7 +114,7 @@ scanner:
 					responses = append(responses, rawMessage)
 				}
 			}
-			_, _ = fmt.Fprint(c.Response(), token)
+			_, _ = fmt.Fprint(c.Response(), token+"\n\n")
 			c.Response().Flush()
 		}
 	}
