@@ -107,6 +107,10 @@ func preprocessOpenaiRequest(
 		payload["max_tokens"] = 512
 	}
 
+	if userid == 64 {
+		payload["ignore_eos"] = true
+	}
+
 	// Repackage body
 	body, err = json.Marshal(payload)
 	if err != nil {
