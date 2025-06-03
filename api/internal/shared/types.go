@@ -64,7 +64,6 @@ type ResponseInfo struct {
 	TotalTime            int32
 	TimeToFirstToken     int32
 	ResponseTokens       int
-	ResponseTokensString string
 }
 
 type Request struct {

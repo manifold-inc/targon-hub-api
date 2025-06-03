@@ -87,7 +87,6 @@ func SaveRequest(sqlClient *sql.DB, readSqlClient *sql.DB, res *shared.ResponseI
 	if res != nil {
 		timeForFirstToken = res.TimeToFirstToken
 		totalTime = res.TotalTime
-		responseTokensString = res.ResponseTokensString
 	}
 
 	_, err = sqlClient.Exec(`

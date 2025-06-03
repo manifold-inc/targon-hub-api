@@ -81,11 +81,7 @@ func QueryModels(c *shared.Context, req *shared.RequestInfo) (*shared.ResponseIn
 	// Stream back response
 	tokens := 0
 	var ttft int32
-	var responses []json.RawMessage
-	responseContent := ""
 
-	// var responseBuilder strings.Builder
-	// responseBuilder.WriteString("{")
 scanner:
 	for reader.Scan() {
 		select {
@@ -103,27 +99,15 @@ scanner:
 				c.Log.Infow("Inference engine returned [DONE]", "final", "true", "status", "success", "reqID", req.Id, "model", req.Model)
 				break scanner
 			}
-			if jsonData, found := strings.CutPrefix(token, "data: "); found {
 				if tokens == 0 {
 					ttft = int32(time.Since(req.StartTime))
 					c.Log.Infow("time to first token", "duration", fmt.Sprintf("%d", time.Since(req.StartTime)/time.Millisecond), "from", "fallback")
 				}
 				tokens += 1
-				var rawMessage json.RawMessage
-				if err := json.Unmarshal([]byte(jsonData), &rawMessage); err == nil {
-					responses = append(responses, rawMessage)
-				}
 			}
 			_, _ = fmt.Fprint(c.Response(), token+"\n\n")
 			c.Response().Flush()
 		}
-	}
-	responseJSON, err := json.Marshal(responses)
-	if err == nil {
-		responseContent = string(responseJSON)
-	}
-	if req.UserId != 64 {
-		responseContent = "{}"
 	}
 
 	c.Log.Infow(
@@ -137,7 +121,6 @@ scanner:
 		TotalTime:            int32(time.Since(req.StartTime)),
 		ResponseTokens:       tokens,
 		TimeToFirstToken:     ttft,
-		ResponseTokensString: responseContent,
 	}
 	return &resInfo, nil
 }
