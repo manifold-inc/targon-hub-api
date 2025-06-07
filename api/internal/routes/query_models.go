@@ -66,7 +66,7 @@ func QueryModels(c *shared.Context, req *shared.RequestInfo) (*shared.ResponseIn
 	res, err := httpClient.Do(r)
 	if err != nil {
 		c.Log.Warnw("Fallback request failed", "error", err)
-		return nil, &shared.RequestError{StatusCode: 429, Err: errors.New("fallback request failed")}
+		return nil, &shared.RequestError{StatusCode: 500, Err: errors.New("fallback request failed")}
 	}
 	defer func() {
 		_ = res.Body.Close()
@@ -74,7 +74,7 @@ func QueryModels(c *shared.Context, req *shared.RequestInfo) (*shared.ResponseIn
 	if res.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(res.Body)
 		c.Log.Warnw("Fallback request failed", "error", body)
-		return nil, &shared.RequestError{StatusCode: 429, Err: errors.New("fallback request failed")}
+		return nil, &shared.RequestError{StatusCode: 500, Err: errors.New("fallback request failed")}
 	}
 	reader := bufio.NewScanner(res.Body)
 

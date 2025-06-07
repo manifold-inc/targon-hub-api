@@ -385,66 +385,6 @@ func IsUserChargeable(ctx context.Context, redisClient *redis.Client, readDb *sq
 	return chargeable, nil
 }
 
-func CancellationPatternBlocker(redisClient *redis.Client, readDb *sql.DB) echo.MiddlewareFunc {
-	return func(next echo.HandlerFunc) echo.HandlerFunc {
-		return func(c echo.Context) error {
-			cc, ok := c.(*shared.Context)
-			if !ok {
-				return next(c)
-			}
-
-			apiKey, err := ExtractApiKey(c)
-			if err != nil {
-				return next(c)
-			}
-
-			var userId int
-			err = readDb.QueryRow("SELECT user_id FROM api_key WHERE id = ?", apiKey).Scan(&userId)
-			if err != nil {
-				cc.Log.Warnw("Failed to get user ID from API key", "error", err, "apiKey", apiKey)
-				return next(c)
-			}
-
-			// Check if the user is chargeable
-			chargeable, err := IsUserChargeable(c.Request().Context(), redisClient, readDb, userId, cc.Log)
-			if err != nil {
-				cc.Log.Warnw("Error checking if user is chargeable", "error", err, "user_id", userId)
-				return next(c)
-			}
-
-			// Skip non-chargeable users
-			if !chargeable {
-				return next(c)
-			}
-
-			// Check cancellation count
-			cancelKey := fmt.Sprintf("%s%d", CancelKeyPrefix, userId)
-			count, err := redisClient.Get(c.Request().Context(), cancelKey).Int64()
-			if err != nil && err != redis.Nil {
-				cc.Log.Warnw("Error checking cancellation count", "error", err, "user_id", userId)
-				return next(c)
-			}
-
-			// If user has exceeded cancellation threshold, reject the request
-			if count >= CancelThreshold {
-				cc.Log.Warnw("Rejecting request due to excessive cancellations",
-					"user_id", userId,
-					"cancellation_count", count)
-
-				// Return 429 Too Many Requests
-				return c.JSON(http.StatusTooManyRequests, shared.OpenAIError{
-					Message: "Too many canceled requests detected. Please try again later.",
-					Object:  "error",
-					Type:    "requests_limit_exceeded",
-					Code:    http.StatusTooManyRequests,
-				})
-			}
-
-			return next(c)
-		}
-	}
-}
-
 // TrackCancellation records a cancellation for a user
 func TrackCancellation(ctx context.Context, redisClient *redis.Client, userId int, logger *zap.SugaredLogger) {
 	// First check if this user is chargeable
