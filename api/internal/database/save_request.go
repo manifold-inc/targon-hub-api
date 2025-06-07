@@ -48,9 +48,8 @@ func SaveRequest(sqlClient *sql.DB, readSqlClient *sql.DB, res *shared.ResponseI
 
 	// Update credits
 	usedCredits := int64(0)
-	input_tokens_approx := max(len(string(req.Body))/10, 1)
 	if res != nil {
-		usedCredits = (int64(res.ResponseTokens) + int64(input_tokens_approx)) * int64(cpt)
+		usedCredits = int64(res.ResponseTokens) * int64(cpt)
 	}
 
 	if !req.Chargeable {
@@ -83,32 +82,24 @@ func SaveRequest(sqlClient *sql.DB, readSqlClient *sql.DB, res *shared.ResponseI
 
 	var timeForFirstToken int32 = 0
 	var totalTime int32 = 0
-	var responseTokensString string = "{}"
 	if res != nil {
 		timeForFirstToken = res.TimeToFirstToken
 		totalTime = res.TotalTime
-		responseTokensString = res.ResponseTokensString
 	}
 
 	_, err = sqlClient.Exec(`
 	INSERT INTO 
-		request (pub_id, user_id, used_credits, request, response, model_id, uid, hotkey, coldkey, miner_address, endpoint, success, time_to_first_token, total_time, scored)
-		VALUES	(?,      ?,       ?,            ?,       ?,        ?,        ?,   ?,      ?,       ?,             ?,        ?,       ?,                   ?,          ?)`,
+		request (pub_id, user_id, used_credits, request, model_id, endpoint, success, time_to_first_token, total_time)
+		VALUES	(?,      ?,       ?,            ?,       ?,        ?,        ?,       ?,                   ?)`,
 		req.Id,
 		req.UserId,
 		total_credits_used,
-		string(req.Body),
-		responseTokensString,
+		"{}",
 		model_id,
-		0,
-		"",
-		"",
-		"",
 		req.Endpoint,
 		res != nil,
 		timeForFirstToken,
 		totalTime,
-		1,
 	)
 	if err != nil {
 		logger.Errorw("Failed to update", "error", err.Error())

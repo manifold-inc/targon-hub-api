@@ -73,7 +73,7 @@ func preprocessOpenaiRequest(
 		return nil, &shared.RequestError{
 			StatusCode: 400,
 			Err: errors.New(
-				"Malformed request",
+				"malformed request",
 			),
 		}
 	}
